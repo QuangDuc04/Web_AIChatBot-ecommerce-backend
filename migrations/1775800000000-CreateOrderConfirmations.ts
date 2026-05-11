@@ -6,9 +6,9 @@ export class CreateOrderConfirmations1775800000000 implements MigrationInterface
       new Table({
         name: 'order_confirmations',
         columns: [
-          { name: 'id', type: 'char', length: '36', isPrimary: true, isGenerated: true, generationStrategy: 'uuid' },
+          { name: 'id', type: 'varchar', length: '36', isPrimary: true, isGenerated: true, generationStrategy: 'uuid' },
           { name: 'token', type: 'varchar', length: '64', isUnique: true },
-          { name: 'conversationId', type: 'char', length: '36', isNullable: true },
+          { name: 'conversationId', type: 'varchar', length: '36', isNullable: true },
           { name: 'customerName', type: 'varchar', length: '255' },
           { name: 'customerPhone', type: 'varchar', length: '20' },
           { name: 'customerEmail', type: 'varchar', length: '255', isNullable: true },
@@ -18,7 +18,7 @@ export class CreateOrderConfirmations1775800000000 implements MigrationInterface
           { name: 'status', type: 'enum', enum: ['pending', 'confirmed', 'expired'], default: "'pending'" },
           { name: 'expiresAt', type: 'timestamp' },
           { name: 'confirmedAt', type: 'timestamp', isNullable: true },
-          { name: 'orderId', type: 'char', length: '36', isNullable: true },
+          { name: 'orderId', type: 'varchar', length: '36', isNullable: true },
           { name: 'createdAt', type: 'timestamp', default: 'CURRENT_TIMESTAMP' },
         ],
       }),

@@ -132,7 +132,7 @@ export class GuestOnlyCheckout1775200000000 implements MigrationInterface {
       WHERE cu.customerEmail IS NULL
     `);
     await queryRunner.query(
-      `ALTER TABLE coupon_usages MODIFY customerId CHAR(36) NULL`,
+      `ALTER TABLE coupon_usages MODIFY customerId VARCHAR(36) NULL`,
     );
     if (!(await this.indexExists(queryRunner, 'coupon_usages', 'IDX_coupon_usages_email'))) {
       await queryRunner.query(
@@ -148,8 +148,8 @@ export class GuestOnlyCheckout1775200000000 implements MigrationInterface {
     // Recreate customer_sessions
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS customer_sessions (
-        id CHAR(36) NOT NULL PRIMARY KEY,
-        customerId CHAR(36) NOT NULL,
+        id VARCHAR(36) NOT NULL PRIMARY KEY,
+        customerId VARCHAR(36) NOT NULL,
         refreshToken TEXT NOT NULL,
         expiresAt TIMESTAMP NOT NULL,
         userAgent VARCHAR(500) NULL,
@@ -166,7 +166,7 @@ export class GuestOnlyCheckout1775200000000 implements MigrationInterface {
     if (await this.indexExists(queryRunner, 'coupon_usages', 'IDX_coupon_usages_email')) {
       await queryRunner.query(`ALTER TABLE coupon_usages DROP INDEX IDX_coupon_usages_email`);
     }
-    await queryRunner.query(`ALTER TABLE coupon_usages MODIFY customerId CHAR(36) NOT NULL`);
+    await queryRunner.query(`ALTER TABLE coupon_usages MODIFY customerId VARCHAR(36) NOT NULL`);
     if (await this.columnExists(queryRunner, 'coupon_usages', 'customerEmail')) {
       await queryRunner.query(`ALTER TABLE coupon_usages DROP COLUMN customerEmail`);
     }

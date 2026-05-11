@@ -2,20 +2,13 @@ import { MigrationInterface, QueryRunner, Table, TableColumn } from 'typeorm';
 
 export class AddCustomerFieldsAndImages1775700000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Add company and isActive columns to customers
-    await queryRunner.addColumns('customers', [
-      new TableColumn({
-        name: 'company',
-        type: 'varchar',
-        length: '255',
-        isNullable: true,
-      }),
-      new TableColumn({
-        name: 'isActive',
-        type: 'boolean',
-        default: true,
-      }),
-    ]);
+    // Add company column to customers (isActive already exists from SplitCustomersFromUsers)
+    await queryRunner.addColumn('customers', new TableColumn({
+      name: 'company',
+      type: 'varchar',
+      length: '255',
+      isNullable: true,
+    }));
 
     // Make email nullable (admin can create customer without email)
     await queryRunner.changeColumn('customers', 'email', new TableColumn({
@@ -33,7 +26,7 @@ export class AddCustomerFieldsAndImages1775700000000 implements MigrationInterfa
         columns: [
           {
             name: 'id',
-            type: 'char',
+            type: 'varchar',
             length: '36',
             isPrimary: true,
             generationStrategy: 'uuid',
@@ -41,7 +34,7 @@ export class AddCustomerFieldsAndImages1775700000000 implements MigrationInterfa
           },
           {
             name: 'customerId',
-            type: 'char',
+            type: 'varchar',
             length: '36',
           },
           {
@@ -82,7 +75,6 @@ export class AddCustomerFieldsAndImages1775700000000 implements MigrationInterfa
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.dropTable('customer_images');
-    await queryRunner.dropColumn('customers', 'isActive');
     await queryRunner.dropColumn('customers', 'company');
     await queryRunner.changeColumn('customers', 'email', new TableColumn({
       name: 'email',

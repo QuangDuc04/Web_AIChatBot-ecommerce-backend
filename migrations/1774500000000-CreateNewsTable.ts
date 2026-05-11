@@ -6,7 +6,7 @@ export class CreateNewsTable1774500000000 implements MigrationInterface {
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`
             CREATE TABLE \`news\` (
-                \`id\` varchar(36) NOT NULL,
+                \`id\` VARCHAR(36) NOT NULL,
                 \`title\` varchar(500) NOT NULL,
                 \`slug\` varchar(500) NOT NULL,
                 \`summary\` text NULL,

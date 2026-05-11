@@ -9,8 +9,8 @@ export class DropCartTables1776200000000 implements MigrationInterface {
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE \`carts\` (
-        \`id\` varchar(36) NOT NULL,
-        \`customerId\` varchar(36) NULL,
+        \`id\` VARCHAR(36) NOT NULL,
+        \`customerId\` VARCHAR(36) NULL,
         \`sessionId\` varchar(255) NULL,
         \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
@@ -21,10 +21,10 @@ export class DropCartTables1776200000000 implements MigrationInterface {
     `);
     await queryRunner.query(`
       CREATE TABLE \`cart_items\` (
-        \`id\` varchar(36) NOT NULL,
-        \`cartId\` varchar(36) NOT NULL,
-        \`productId\` varchar(36) NOT NULL,
-        \`variantId\` varchar(36) NULL,
+        \`id\` VARCHAR(36) NOT NULL,
+        \`cartId\` VARCHAR(36) NOT NULL,
+        \`productId\` VARCHAR(36) NOT NULL,
+        \`variantId\` VARCHAR(36) NULL,
         \`quantity\` int NOT NULL,
         \`price\` decimal(15,2) NOT NULL,
         \`buyingUnitType\` enum('cuon','thung','cai') NULL DEFAULT NULL,

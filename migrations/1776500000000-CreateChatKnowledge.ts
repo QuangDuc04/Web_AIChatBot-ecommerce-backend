@@ -4,7 +4,7 @@ export class CreateChatKnowledge1776500000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE \`chat_knowledge\` (
-        \`id\` varchar(36) NOT NULL,
+        \`id\` VARCHAR(36) NOT NULL,
         \`question\` varchar(500) NOT NULL,
         \`answer\` text NOT NULL,
         \`questionType\` enum('product_inquiry','pricing','policy','general') NOT NULL DEFAULT 'general',
@@ -20,7 +20,7 @@ export class CreateChatKnowledge1776500000000 implements MigrationInterface {
         INDEX \`IDX_ck_active_expires\` (\`isActive\`, \`expiresAt\`),
         INDEX \`IDX_ck_question_type\` (\`questionType\`),
         FULLTEXT INDEX \`IDX_ck_question_ft\` (\`question\`)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+      ) ENGINE=InnoDB
     `);
   }
 

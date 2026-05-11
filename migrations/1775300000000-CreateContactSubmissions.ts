@@ -6,7 +6,7 @@ export class CreateContactSubmissions1775300000000 implements MigrationInterface
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS contact_submissions (
-        id CHAR(36) NOT NULL PRIMARY KEY,
+        id VARCHAR(36) NOT NULL PRIMARY KEY,
         type ENUM('contact', 'quote') NOT NULL DEFAULT 'contact',
         name VARCHAR(255) NOT NULL,
         email VARCHAR(255) NOT NULL,
@@ -18,7 +18,7 @@ export class CreateContactSubmissions1775300000000 implements MigrationInterface
         createdAt TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         INDEX IDX_contact_status (status),
         INDEX IDX_contact_createdAt (createdAt)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+      ) ENGINE=InnoDB
     `);
   }
 

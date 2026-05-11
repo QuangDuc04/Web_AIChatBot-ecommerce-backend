@@ -3,7 +3,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 export class AddGuestCheckoutFields1774950000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Make customerId nullable for guest orders
-    await queryRunner.query(`ALTER TABLE orders MODIFY customerId CHAR(36) NULL`);
+    await queryRunner.query(`ALTER TABLE orders MODIFY customerId VARCHAR(36) NULL`);
 
     // Add guest checkout fields
     await queryRunner.query(`ALTER TABLE orders ADD COLUMN isGuest TINYINT NOT NULL DEFAULT 0 AFTER customerId`);
@@ -27,6 +27,6 @@ export class AddGuestCheckoutFields1774950000000 implements MigrationInterface {
     await queryRunner.query(`ALTER TABLE orders DROP COLUMN guestEmail`);
     await queryRunner.query(`ALTER TABLE orders DROP COLUMN guestName`);
     await queryRunner.query(`ALTER TABLE orders DROP COLUMN isGuest`);
-    await queryRunner.query(`ALTER TABLE orders MODIFY customerId CHAR(36) NOT NULL`);
+    await queryRunner.query(`ALTER TABLE orders MODIFY customerId VARCHAR(36) NOT NULL`);
   }
 }

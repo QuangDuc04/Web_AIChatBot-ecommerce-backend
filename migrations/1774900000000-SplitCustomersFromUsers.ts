@@ -6,8 +6,8 @@ export class SplitCustomersFromUsers1774900000000 implements MigrationInterface 
     // Step 1: Create `customers` table
     // ============================================================
     await queryRunner.query(`
-      CREATE TABLE customers (
-        id CHAR(36) NOT NULL,
+      CREATE TABLE IF NOT EXISTS customers (
+        id VARCHAR(36) NOT NULL,
         email VARCHAR(255) NOT NULL,
         password VARCHAR(255) NULL,
         googleId VARCHAR(255) NULL,
@@ -31,7 +31,7 @@ export class SplitCustomersFromUsers1774900000000 implements MigrationInterface 
         UNIQUE KEY UQ_customers_email (email),
         UNIQUE KEY UQ_customers_googleId (googleId),
         UNIQUE KEY UQ_customers_phone (phone)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+      ) ENGINE=InnoDB
     `);
 
     // ============================================================
@@ -51,9 +51,9 @@ export class SplitCustomersFromUsers1774900000000 implements MigrationInterface 
     // Step 3: Create `customer_sessions` table
     // ============================================================
     await queryRunner.query(`
-      CREATE TABLE customer_sessions (
-        id CHAR(36) NOT NULL,
-        customerId CHAR(36) NOT NULL,
+      CREATE TABLE IF NOT EXISTS customer_sessions (
+        id VARCHAR(36) NOT NULL,
+        customerId VARCHAR(36) NOT NULL,
         refreshToken TEXT NOT NULL,
         expiresAt TIMESTAMP NOT NULL,
         userAgent VARCHAR(500) NULL,
@@ -64,7 +64,7 @@ export class SplitCustomersFromUsers1774900000000 implements MigrationInterface 
         PRIMARY KEY (id),
         KEY IDX_customer_sessions_customerId (customerId),
         CONSTRAINT FK_customer_sessions_customer FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+      ) ENGINE=InnoDB
     `);
 
     // ============================================================
@@ -133,64 +133,64 @@ export class SplitCustomersFromUsers1774900000000 implements MigrationInterface 
 
     // --- orders ---
     await dropFK('orders', 'userId');
-    await queryRunner.query(`ALTER TABLE orders CHANGE userId customerId CHAR(36) NOT NULL`);
+    await queryRunner.query(`ALTER TABLE orders CHANGE userId customerId VARCHAR(36) NOT NULL`);
     await queryRunner.query(`ALTER TABLE orders ADD INDEX IDX_orders_customerId (customerId)`);
     await queryRunner.query(`ALTER TABLE orders ADD CONSTRAINT FK_orders_customer FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE RESTRICT`);
 
     // --- carts ---
     await dropFK('carts', 'userId');
-    await queryRunner.query(`ALTER TABLE carts CHANGE userId customerId CHAR(36) NULL`);
+    await queryRunner.query(`ALTER TABLE carts CHANGE userId customerId VARCHAR(36) NULL`);
     await queryRunner.query(`ALTER TABLE carts ADD UNIQUE KEY UQ_carts_customerId (customerId)`);
     await queryRunner.query(`ALTER TABLE carts ADD CONSTRAINT FK_carts_customer FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE CASCADE`);
 
     // --- addresses ---
     await dropFK('addresses', 'userId');
-    await queryRunner.query(`ALTER TABLE addresses CHANGE userId customerId CHAR(36) NOT NULL`);
+    await queryRunner.query(`ALTER TABLE addresses CHANGE userId customerId VARCHAR(36) NOT NULL`);
     await queryRunner.query(`ALTER TABLE addresses ADD INDEX IDX_addresses_customerId (customerId)`);
     await queryRunner.query(`ALTER TABLE addresses ADD CONSTRAINT FK_addresses_customer FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE CASCADE`);
 
     // --- product_reviews ---
     await dropFK('product_reviews', 'userId');
-    await queryRunner.query(`ALTER TABLE product_reviews CHANGE userId customerId CHAR(36) NOT NULL`);
+    await queryRunner.query(`ALTER TABLE product_reviews CHANGE userId customerId VARCHAR(36) NOT NULL`);
     await queryRunner.query(`ALTER TABLE product_reviews ADD INDEX IDX_product_reviews_customerId (customerId)`);
     await queryRunner.query(`ALTER TABLE product_reviews ADD CONSTRAINT FK_product_reviews_customer FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE CASCADE`);
 
     // --- wishlists ---
     await dropFK('wishlists', 'userId');
     await dropUnique('wishlists', ['userId', 'productId', 'variantId']);
-    await queryRunner.query(`ALTER TABLE wishlists CHANGE userId customerId CHAR(36) NOT NULL`);
+    await queryRunner.query(`ALTER TABLE wishlists CHANGE userId customerId VARCHAR(36) NOT NULL`);
     await queryRunner.query(`ALTER TABLE wishlists ADD INDEX IDX_wishlists_customerId (customerId)`);
     await queryRunner.query(`ALTER TABLE wishlists ADD UNIQUE KEY UQ_wishlists_customerId_productId_variantId (customerId, productId, variantId)`);
     await queryRunner.query(`ALTER TABLE wishlists ADD CONSTRAINT FK_wishlists_customer FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE CASCADE`);
 
     // --- notifications ---
     await dropFK('notifications', 'userId');
-    await queryRunner.query(`ALTER TABLE notifications CHANGE userId customerId CHAR(36) NOT NULL`);
+    await queryRunner.query(`ALTER TABLE notifications CHANGE userId customerId VARCHAR(36) NOT NULL`);
     await queryRunner.query(`ALTER TABLE notifications ADD INDEX IDX_notifications_customerId_isRead (customerId, isRead)`);
     await queryRunner.query(`ALTER TABLE notifications ADD CONSTRAINT FK_notifications_customer FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE CASCADE`);
 
     // --- notification_settings ---
     await dropFK('notification_settings', 'userId');
-    await queryRunner.query(`ALTER TABLE notification_settings CHANGE userId customerId CHAR(36) NOT NULL`);
+    await queryRunner.query(`ALTER TABLE notification_settings CHANGE userId customerId VARCHAR(36) NOT NULL`);
     await queryRunner.query(`ALTER TABLE notification_settings ADD UNIQUE KEY UQ_notification_settings_customerId (customerId)`);
     await queryRunner.query(`ALTER TABLE notification_settings ADD CONSTRAINT FK_notification_settings_customer FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE CASCADE`);
 
     // --- search_logs ---
     await dropFK('search_logs', 'userId');
-    await queryRunner.query(`ALTER TABLE search_logs CHANGE userId customerId CHAR(36) NULL`);
+    await queryRunner.query(`ALTER TABLE search_logs CHANGE userId customerId VARCHAR(36) NULL`);
     await queryRunner.query(`UPDATE search_logs SET customerId = NULL WHERE customerId IS NOT NULL AND customerId NOT IN (SELECT id FROM customers)`);
     await queryRunner.query(`ALTER TABLE search_logs ADD CONSTRAINT FK_search_logs_customer FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE SET NULL`);
 
     // --- product_views ---
     await dropFK('product_views', 'userId');
-    await queryRunner.query(`ALTER TABLE product_views CHANGE userId customerId CHAR(36) NULL`);
+    await queryRunner.query(`ALTER TABLE product_views CHANGE userId customerId VARCHAR(36) NULL`);
     // Clean orphans: null out customerId that doesn't exist in customers table
     await queryRunner.query(`UPDATE product_views SET customerId = NULL WHERE customerId IS NOT NULL AND customerId NOT IN (SELECT id FROM customers)`);
     await queryRunner.query(`ALTER TABLE product_views ADD CONSTRAINT FK_product_views_customer FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE SET NULL`);
 
     // --- coupon_usages ---
     await dropFK('coupon_usages', 'userId');
-    await queryRunner.query(`ALTER TABLE coupon_usages CHANGE userId customerId CHAR(36) NOT NULL`);
+    await queryRunner.query(`ALTER TABLE coupon_usages CHANGE userId customerId VARCHAR(36) NOT NULL`);
     await queryRunner.query(`ALTER TABLE coupon_usages ADD CONSTRAINT FK_coupon_usages_customer FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE CASCADE`);
 
     // ============================================================
@@ -209,7 +209,7 @@ export class SplitCustomersFromUsers1774900000000 implements MigrationInterface 
     for (const idx of cpIndexes) {
       try { await queryRunner.query(`ALTER TABLE conversation_participants DROP INDEX \`${idx.INDEX_NAME}\``); } catch {}
     }
-    await queryRunner.query(`ALTER TABLE conversation_participants ADD COLUMN customerId CHAR(36) NULL AFTER conversationId`);
+    await queryRunner.query(`ALTER TABLE conversation_participants ADD COLUMN customerId VARCHAR(36) NULL AFTER conversationId`);
     // Populate customerId from existing userId where the user is a customer
     await queryRunner.query(`
       UPDATE conversation_participants cp
@@ -221,7 +221,7 @@ export class SplitCustomersFromUsers1774900000000 implements MigrationInterface 
       UPDATE conversation_participants SET userId = NULL WHERE customerId IS NOT NULL
     `);
     // Make userId nullable
-    await queryRunner.query(`ALTER TABLE conversation_participants MODIFY userId CHAR(36) NULL`);
+    await queryRunner.query(`ALTER TABLE conversation_participants MODIFY userId VARCHAR(36) NULL`);
     await queryRunner.query(`ALTER TABLE conversation_participants ADD INDEX IDX_cp_conv_customer (conversationId, customerId)`);
     await queryRunner.query(`ALTER TABLE conversation_participants ADD INDEX IDX_cp_conv_user (conversationId, userId)`);
     await queryRunner.query(`ALTER TABLE conversation_participants ADD CONSTRAINT FK_cp_customer FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE CASCADE`);
@@ -229,20 +229,20 @@ export class SplitCustomersFromUsers1774900000000 implements MigrationInterface 
 
     // --- review_replies: split userId into customerId + userId ---
     await dropFK('review_replies', 'userId');
-    await queryRunner.query(`ALTER TABLE review_replies ADD COLUMN customerId CHAR(36) NULL AFTER reviewId`);
+    await queryRunner.query(`ALTER TABLE review_replies ADD COLUMN customerId VARCHAR(36) NULL AFTER reviewId`);
     await queryRunner.query(`
       UPDATE review_replies rr
       INNER JOIN customers c ON rr.userId = c.id
       SET rr.customerId = rr.userId
     `);
     await queryRunner.query(`UPDATE review_replies SET userId = NULL WHERE customerId IS NOT NULL`);
-    await queryRunner.query(`ALTER TABLE review_replies MODIFY userId CHAR(36) NULL`);
+    await queryRunner.query(`ALTER TABLE review_replies MODIFY userId VARCHAR(36) NULL`);
     await queryRunner.query(`ALTER TABLE review_replies ADD CONSTRAINT FK_rr_customer FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE CASCADE`);
     await queryRunner.query(`ALTER TABLE review_replies ADD CONSTRAINT FK_rr_user FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE`);
 
     // --- order_status_history: rename changedBy → changedByUserId, add changedByCustomerId ---
     await dropFK('order_status_history', 'changedBy');
-    await queryRunner.query(`ALTER TABLE order_status_history ADD COLUMN changedByCustomerId CHAR(36) NULL AFTER note`);
+    await queryRunner.query(`ALTER TABLE order_status_history ADD COLUMN changedByCustomerId VARCHAR(36) NULL AFTER note`);
     // Move customer references from changedBy to changedByCustomerId
     await queryRunner.query(`
       UPDATE order_status_history osh
@@ -250,7 +250,7 @@ export class SplitCustomersFromUsers1774900000000 implements MigrationInterface 
       SET osh.changedByCustomerId = osh.changedBy
     `);
     // Rename changedBy → changedByUserId
-    await queryRunner.query(`ALTER TABLE order_status_history CHANGE changedBy changedByUserId CHAR(36) NULL`);
+    await queryRunner.query(`ALTER TABLE order_status_history CHANGE changedBy changedByUserId VARCHAR(36) NULL`);
     // Null out changedByUserId where it was a customer
     await queryRunner.query(`UPDATE order_status_history SET changedByUserId = NULL WHERE changedByCustomerId IS NOT NULL`);
     await queryRunner.query(`ALTER TABLE order_status_history ADD CONSTRAINT FK_osh_customer FOREIGN KEY (changedByCustomerId) REFERENCES customers(id) ON DELETE SET NULL`);
@@ -258,13 +258,13 @@ export class SplitCustomersFromUsers1774900000000 implements MigrationInterface 
 
     // --- messages: rename senderId → senderUserId, add senderCustomerId ---
     await dropFK('messages', 'senderId');
-    await queryRunner.query(`ALTER TABLE messages ADD COLUMN senderCustomerId CHAR(36) NULL AFTER conversationId`);
+    await queryRunner.query(`ALTER TABLE messages ADD COLUMN senderCustomerId VARCHAR(36) NULL AFTER conversationId`);
     await queryRunner.query(`
       UPDATE messages m
       INNER JOIN customers c ON m.senderId = c.id
       SET m.senderCustomerId = m.senderId
     `);
-    await queryRunner.query(`ALTER TABLE messages CHANGE senderId senderUserId CHAR(36) NULL`);
+    await queryRunner.query(`ALTER TABLE messages CHANGE senderId senderUserId VARCHAR(36) NULL`);
     await queryRunner.query(`UPDATE messages SET senderUserId = NULL WHERE senderCustomerId IS NOT NULL`);
     await queryRunner.query(`ALTER TABLE messages ADD CONSTRAINT FK_msg_customer FOREIGN KEY (senderCustomerId) REFERENCES customers(id) ON DELETE CASCADE`);
     await queryRunner.query(`ALTER TABLE messages ADD CONSTRAINT FK_msg_user FOREIGN KEY (senderUserId) REFERENCES users(id) ON DELETE CASCADE`);
@@ -277,14 +277,14 @@ export class SplitCustomersFromUsers1774900000000 implements MigrationInterface 
     for (const idx of mrrIndexes) {
       try { await queryRunner.query(`ALTER TABLE message_read_receipts DROP INDEX \`${idx.INDEX_NAME}\``); } catch {}
     }
-    await queryRunner.query(`ALTER TABLE message_read_receipts ADD COLUMN customerId CHAR(36) NULL AFTER messageId`);
+    await queryRunner.query(`ALTER TABLE message_read_receipts ADD COLUMN customerId VARCHAR(36) NULL AFTER messageId`);
     await queryRunner.query(`
       UPDATE message_read_receipts mrr
       INNER JOIN customers c ON mrr.userId = c.id
       SET mrr.customerId = mrr.userId
     `);
     await queryRunner.query(`UPDATE message_read_receipts SET userId = NULL WHERE customerId IS NOT NULL`);
-    await queryRunner.query(`ALTER TABLE message_read_receipts MODIFY userId CHAR(36) NULL`);
+    await queryRunner.query(`ALTER TABLE message_read_receipts MODIFY userId VARCHAR(36) NULL`);
     await queryRunner.query(`ALTER TABLE message_read_receipts ADD INDEX IDX_mrr_msg_customer (messageId, customerId)`);
     await queryRunner.query(`ALTER TABLE message_read_receipts ADD INDEX IDX_mrr_msg_user (messageId, userId)`);
     await queryRunner.query(`ALTER TABLE message_read_receipts ADD CONSTRAINT FK_mrr_customer FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE CASCADE`);
@@ -332,20 +332,20 @@ export class SplitCustomersFromUsers1774900000000 implements MigrationInterface 
     await queryRunner.query(`ALTER TABLE message_read_receipts DROP FOREIGN KEY IF EXISTS FK_mrr_user`);
     await queryRunner.query(`UPDATE message_read_receipts SET userId = customerId WHERE customerId IS NOT NULL AND userId IS NULL`);
     await queryRunner.query(`ALTER TABLE message_read_receipts DROP COLUMN customerId`);
-    await queryRunner.query(`ALTER TABLE message_read_receipts MODIFY userId CHAR(36) NOT NULL`);
+    await queryRunner.query(`ALTER TABLE message_read_receipts MODIFY userId VARCHAR(36) NOT NULL`);
 
     // messages
     await queryRunner.query(`ALTER TABLE messages DROP FOREIGN KEY IF EXISTS FK_msg_customer`);
     await queryRunner.query(`ALTER TABLE messages DROP FOREIGN KEY IF EXISTS FK_msg_user`);
     await queryRunner.query(`UPDATE messages SET senderUserId = senderCustomerId WHERE senderCustomerId IS NOT NULL AND senderUserId IS NULL`);
-    await queryRunner.query(`ALTER TABLE messages CHANGE senderUserId senderId CHAR(36) NOT NULL`);
+    await queryRunner.query(`ALTER TABLE messages CHANGE senderUserId senderId VARCHAR(36) NOT NULL`);
     await queryRunner.query(`ALTER TABLE messages DROP COLUMN senderCustomerId`);
 
     // order_status_history
     await queryRunner.query(`ALTER TABLE order_status_history DROP FOREIGN KEY IF EXISTS FK_osh_customer`);
     await queryRunner.query(`ALTER TABLE order_status_history DROP FOREIGN KEY IF EXISTS FK_osh_user`);
     await queryRunner.query(`UPDATE order_status_history SET changedByUserId = changedByCustomerId WHERE changedByCustomerId IS NOT NULL AND changedByUserId IS NULL`);
-    await queryRunner.query(`ALTER TABLE order_status_history CHANGE changedByUserId changedBy CHAR(36) NULL`);
+    await queryRunner.query(`ALTER TABLE order_status_history CHANGE changedByUserId changedBy VARCHAR(36) NULL`);
     await queryRunner.query(`ALTER TABLE order_status_history DROP COLUMN changedByCustomerId`);
 
     // review_replies
@@ -353,14 +353,14 @@ export class SplitCustomersFromUsers1774900000000 implements MigrationInterface 
     await queryRunner.query(`ALTER TABLE review_replies DROP FOREIGN KEY IF EXISTS FK_rr_user`);
     await queryRunner.query(`UPDATE review_replies SET userId = customerId WHERE customerId IS NOT NULL AND userId IS NULL`);
     await queryRunner.query(`ALTER TABLE review_replies DROP COLUMN customerId`);
-    await queryRunner.query(`ALTER TABLE review_replies MODIFY userId CHAR(36) NOT NULL`);
+    await queryRunner.query(`ALTER TABLE review_replies MODIFY userId VARCHAR(36) NOT NULL`);
 
     // conversation_participants
     await queryRunner.query(`ALTER TABLE conversation_participants DROP FOREIGN KEY IF EXISTS FK_cp_customer`);
     await queryRunner.query(`ALTER TABLE conversation_participants DROP FOREIGN KEY IF EXISTS FK_cp_user`);
     await queryRunner.query(`UPDATE conversation_participants SET userId = customerId WHERE customerId IS NOT NULL AND userId IS NULL`);
     await queryRunner.query(`ALTER TABLE conversation_participants DROP COLUMN customerId`);
-    await queryRunner.query(`ALTER TABLE conversation_participants MODIFY userId CHAR(36) NOT NULL`);
+    await queryRunner.query(`ALTER TABLE conversation_participants MODIFY userId VARCHAR(36) NOT NULL`);
 
     // --- Reverse Category A ---
     const catATables = [
@@ -381,7 +381,7 @@ export class SplitCustomersFromUsers1774900000000 implements MigrationInterface 
       const fkName = `FK_${t.table}_customer`;
       await queryRunner.query(`ALTER TABLE ${t.table} DROP FOREIGN KEY IF EXISTS ${fkName}`);
       // Rename column back
-      await queryRunner.query(`ALTER TABLE ${t.table} CHANGE customerId userId CHAR(36) ${t.nullable ? 'NULL' : 'NOT NULL'}`);
+      await queryRunner.query(`ALTER TABLE ${t.table} CHANGE customerId userId VARCHAR(36) ${t.nullable ? 'NULL' : 'NOT NULL'}`);
     }
 
     // Drop new tables
