@@ -9,8 +9,10 @@ import { Shipment } from '../../entities/Shipment';
 import { Coupon } from '../../entities/Coupon';
 import { Order } from '../../entities/Order';
 import { Product } from '../../entities/Product';
+import { ProductVariant } from '../../entities/ProductVariant';
 import { MoreThan } from 'typeorm';
 import { CacheUtil } from '../../utils/cache.util';
+import { analyzeSearchQuery } from '../../utils/search-query.util';
 import { OrderConfirmationService } from '../orderConfirmation.service';
 
 // ────────────────────────────────────────────────────────────────
@@ -219,21 +221,65 @@ export class ChatbotToolsService {
       return sale > 0 && sale < base ? base : null; // null when no discount
     };
 
+    // Load variants for all matched products so Gemini can report variant-specific
+    // name, price, and stock (e.g. "iPhone 14 128GB — 22.000.000đ, còn hàng").
+    const variantsByProduct = new Map<string, ProductVariant[]>();
+    if (result.items.length > 0) {
+      const variantRepo = AppDataSource.getRepository(ProductVariant);
+      const productIds = result.items.map((p: any) => p.id);
+      const allVariants = await variantRepo
+        .createQueryBuilder('v')
+        .where('v.productId IN (:...ids)', { ids: productIds })
+        .getMany();
+      for (const v of allVariants) {
+        if (!variantsByProduct.has(v.productId)) variantsByProduct.set(v.productId, []);
+        variantsByProduct.get(v.productId)!.push(v);
+      }
+    }
+
+    // Use requireExactModel (same logic as scoredSearch) to decide which variants to surface:
+    // - Specific query ("iPhone 14 128GB") → only variants matching "128GB"
+    // - General query ("iPhone 14")        → all variants so Gemini can list options
+    const analyzed = analyzeSearchQuery(query);
+    const requireExactModel = analyzed.modelNumbers.filter((m) => m.length >= 4);
+
     const data = {
       total: result.total,
-      products: result.items.map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        sellingPrice: deriveSellingPrice(p),  // giá khách trả — luôn là số nhỏ hơn
-        originalPrice: deriveOriginalPrice(p), // giá gốc gạch ngang, null nếu không giảm
-        category: p.category?.name,
-        brand: p.brand?.name,
-        unitType: p.unitType || null,
-        inStock: (p.quantity ?? 0) > 0,
-        productUrl: p.category?.slug && p.slug
-          ? `${resolvedClientUrl}/${p.category.slug}/${p.slug}`
-          : null,
-      })),
+      products: result.items.map((p: any) => {
+        const allPVariants = variantsByProduct.get(p.id) || [];
+        const matchedVariants = requireExactModel.length > 0
+          ? allPVariants.filter((v) =>
+              requireExactModel.some(
+                (m) => v.name.toLowerCase().includes(m.toLowerCase())
+                  || (v.sku || '').toLowerCase().includes(m.toLowerCase()),
+              )
+            )
+          : allPVariants;
+
+        return {
+          id: p.id,
+          name: p.name,
+          sellingPrice: deriveSellingPrice(p),  // giá khách trả — luôn là số nhỏ hơn
+          originalPrice: deriveOriginalPrice(p), // giá gốc gạch ngang, null nếu không giảm
+          category: p.category?.name,
+          brand: p.brand?.name,
+          unitType: p.unitType || null,
+          inStock: (p.quantity ?? 0) > 0 || matchedVariants.some((v) => v.quantity > 0),
+          productUrl: p.category?.slug && p.slug
+            ? `${resolvedClientUrl}/${p.category.slug}/${p.slug}`
+            : null,
+          // Include variant details when present so Gemini reports the right name + price.
+          // Gemini prioritizes variant.name and variant.sellingPrice over base product fields.
+          ...(matchedVariants.length > 0 ? {
+            variants: matchedVariants.map((v) => ({
+              variantId: v.id,   // dùng tên khác để Gemini không nhầm với productId
+              name: v.name,
+              sellingPrice: Number(v.price) || 0,
+              inStock: v.quantity > 0,
+            })),
+          } : {}),
+        };
+      }),
     };
 
     if (result.total > 0) {
@@ -549,25 +595,32 @@ export class ChatbotToolsService {
     if (!items.length) return { error: 'Cần ít nhất 1 sản phẩm' };
 
     const productRepo = AppDataSource.getRepository(Product);
+    const isValidUUID = (id: string) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
     const resolvedItems = [];
     for (const item of items) {
       let product = null;
-      if (item.productId) {
+
+      // Only query by productId when it is a real UUID — Gemini sometimes fabricates
+      // numeric IDs (e.g. "6642279802644117943") when it skipped search_products.
+      if (item.productId && isValidUUID(String(item.productId))) {
         product = await productRepo.findOne({ where: { id: item.productId, isActive: true }, relations: ['images'] });
       }
+
       if (!product) {
-        // Multi-word search fallback by name — use at most 3 words (AND) to avoid
-        // missing products when AI passes a slightly longer name than what's in DB.
+        // Fallback: use scoredSearch (same engine as the chatbot search tool) so we
+        // can find the product even when Gemini passes a hallucinated/wrong productId
+        // or a name that differs slightly from the DB record (e.g. "128GB" suffix).
         const keyword = String(item.productName || item.name || '');
         if (keyword) {
-          const words = keyword.trim().split(/\s+/).filter(Boolean).slice(0, 3);
-          const qb = productRepo.createQueryBuilder('p')
-            .leftJoinAndSelect('p.images', 'images')
-            .where('p.isActive = true');
-          words.forEach((w, i) => {
-            qb.andWhere(`p.name LIKE :cw${i}`, { [`cw${i}`]: `%${w}%` });
-          });
-          product = await qb.getOne();
+          const searchResult = await this.productRepo.scoredSearch(keyword, { limit: 1, minScore: 5 });
+          if (searchResult.items.length > 0) {
+            product = await productRepo.findOne({
+              where: { id: searchResult.items[0].id, isActive: true },
+              relations: ['images'],
+            });
+          }
         }
       }
 

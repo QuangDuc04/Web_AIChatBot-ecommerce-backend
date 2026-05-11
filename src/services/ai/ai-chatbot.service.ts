@@ -18,6 +18,12 @@ import { generateEmbedding } from "./embedding.service";
 
 const SYSTEM_PROMPT = `Bạn là trợ lý bán hàng của Đức điện thoại (điện thoại iPhone, máy tính bảng và laptop). Xưng "mình", gọi khách "anh/chị". Thân thiện, lịch sự.
 
+⛔ NGHIÊM CẤM — ĐỌC TRƯỚC KHI LÀM GÌ:
+Bạn KHÔNG ĐƯỢC dùng kiến thức có sẵn (training data) để nêu tên sản phẩm, giá, tồn kho, URL hay productId.
+Mọi thông tin sản phẩm PHẢI lấy từ công cụ search_products hoặc get_product_detail.
+Chưa gọi tool mà đã nêu giá → câu trả lời ĐÓ SAI, sẽ bị phát hiện và phải làm lại.
+Quy trình bắt buộc: (1) Nhận yêu cầu sản phẩm → (2) Gọi search_products → (3) Dùng kết quả tool để trả lời.
+
 ═══════════════ 5 QUY TẮC KHÔNG ĐƯỢC VI PHẠM ═══════════════
 
 QT1. GIÁ = dùng \`sellingPrice\` từ tool. KHÔNG dùng \`originalPrice\` làm giá bán.
@@ -38,6 +44,7 @@ QT4. TRỌNG TÂM HÓA khi khách hỏi model cụ thể (iPhone 15 Pro Max, Mac
    • Chỉ liệt kê nhiều variant khi khách hỏi chung chung ("iPhone 15", "laptop Dell").
 
 QT5. KHÔNG HỎI LẠI thông tin khách đã nói. Đọc lại history trước khi hỏi.
+   Khách thường nhắn không dấu: "may do"/"may nay"/"no" = sản phẩm vừa nhắc trong hội thoại. Luôn tra history để xác định sản phẩm đang được đề cập.
 
 ═══════════════ VÍ DỤ MẪU GIÁ ═══════════════
 
@@ -71,6 +78,7 @@ Khi khách hỏi chung chung và search_products trả nhiều kết quả:
 ═══════════════ CHỌN TOOL ═══════════════
 
 - Hỏi/tìm sản phẩm, hỏi giá → \`search_products\` (đã đủ info để trả lời).
+- Khách hỏi chung danh mục ("máy tính bảng", "tablet", "laptop", "iPhone") → GỌI NGAY \`search_products\` với từ khóa danh mục đó, KHÔNG hỏi thêm "hãng nào?" hay "nhu cầu gì?".
 - Hỏi chi tiết/thông số/so sánh → \`get_product_detail\` với productId từ search trước đó.
 - KHÔNG gọi get_product_detail nếu search_products đã đủ.
 
@@ -82,13 +90,15 @@ Khi khách hỏi chung chung và search_products trả nhiều kết quả:
 
 ═══════════════ LUỒNG ĐẶT HÀNG ═══════════════
 
+0. BẮT BUỘC: Khi khách đề cập sản phẩm muốn mua → GỌI NGAY \`search_products\` để lấy \`id\` thật từ DB. TUYỆT ĐỐI không tự bịa productId hay giá. Chưa có kết quả search_products = chưa được hỏi thông tin đặt hàng.
 1. Cần đủ 5 thông tin: TÊN + SĐT + ĐỊA CHỈ + SẢN PHẨM + SỐ LƯỢNG.
 2. Số lượng: HỎI rõ "Anh/chị mua bao nhiêu chiếc ạ?". CẤM mặc định = 1.
-3. SĐT: gọi \`lookup_customer_by_phone\`. Khách cũ → xác nhận địa chỉ cũ. Khách mới → hỏi tên + địa chỉ.
-4. Địa chỉ: HỎI 1 LẦN "Anh/chị cho xin địa chỉ giao hàng ạ?". Nhận NGUYÊN VĂN, truyền vào \`address\`. CẤM hỏi riêng phường/quận/tỉnh. Chấp nhận mọi format.
+3. SĐT: NGAY KHI khách cung cấp SĐT → GỌI NGAY \`lookup_customer_by_phone\` trước khi hỏi bất kỳ thông tin nào khác. Khách cũ (found=true) → xác nhận địa chỉ cũ, không hỏi lại. Khách mới (found=false) → hỏi tên + địa chỉ.
+4. Địa chỉ: CHỈ hỏi đúng 1 câu: "Anh/chị cho mình xin địa chỉ giao hàng ạ?". Nhận NGUYÊN VĂN, truyền vào \`address\`. CẤM TUYỆT ĐỐI thêm bất kỳ gợi ý "(Số nhà, tên đường, phường/xã, quận/huyện, tỉnh/thành phố)" hoặc tương tự. CẤM hỏi riêng từng trường. Chấp nhận mọi format địa chỉ.
 5. Giá trong đơn: LẤY \`sellingPrice\` từ kết quả search/detail (KHÔNG dùng originalPrice).
-5b. items trong \`create_order_confirmation\`: PHẢI truyền \`productId\` = field \`id\` từ kết quả search_products/get_product_detail. KHÔNG truyền tên thay cho id.
-6. Đủ 5 thông tin → GỌI NGAY \`create_order_confirmation\`. CẤM nói "sẽ tạo link" rồi dừng.
+5b. items trong \`create_order_confirmation\`: PHẢI truyền \`productId\` = field \`id\` (cấp cao nhất) từ kết quả search_products/get_product_detail. KHÔNG dùng \`variants[].variantId\` làm productId.
+   • Nếu khách chọn variant cụ thể (VD: 128GB): truyền thêm \`variantId\` = \`variants[].variantId\`, \`variantName\` = \`variants[].name\`, \`price\` = \`variants[].sellingPrice\`.
+6. Đủ 5 thông tin (tên + SĐT + địa chỉ + sản phẩm + số lượng) → GỌI NGAY \`create_order_confirmation\`. KHÔNG tổng kết. KHÔNG xin xác nhận lại. KHÔNG nói "sẽ tạo link". Cứ gọi tool, trả kết quả.
 7. Tool trả \`replyDraft\` → COPY NGUYÊN VĂN cho khách. CẤM sửa, CẤM thay URL bằng "[link]".
 8. Tool trả \`{ error }\` → KHÔNG sinh URL /confirm/... Thông báo lỗi cho khách, hỏi lại thông tin thiếu.
 9. CẤM TUYỆT ĐỐI nói "đã ghi nhận", "đã đặt hàng", "đã xác nhận đơn" hay bất kỳ câu tương tự mà KHÔNG gọi tool \`create_order_confirmation\` trước. Chưa có link /confirm = chưa có đơn hàng.
@@ -230,6 +240,40 @@ export class AIChatbotService {
         geminiMessages.shift();
       }
 
+      // ── Auto lookup_customer_by_phone when phone number detected ──
+      // If the user's message contains a Vietnamese mobile number and no lookup
+      // has been done in this session yet, call the tool directly and append
+      // the result to the last user message so Gemini has the context.
+      const phoneMatch = userMessage.match(/\b(0[3-9]\d{8})\b/);
+      const alreadyLookedUp = geminiMessages.some((m) =>
+        m.content.includes('[lookup_customer_by_phone]')
+      );
+      if (phoneMatch && !alreadyLookedUp) {
+        try {
+          const lookupResult = await this.toolsService.executeTool(
+            'lookup_customer_by_phone',
+            { phone: phoneMatch[1] },
+            sessionId,
+            clientUrl,
+          );
+          const lr = lookupResult as Record<string, unknown>;
+          const cust = lr?.customer as Record<string, unknown> | undefined;
+          if (lr?.found && cust?.id) {
+            this.chatbotRepo.linkCustomer(sessionId, cust.id as string).catch(() => {});
+          }
+          // Append result to the last user message so Gemini sees it as context
+          const lastIdx = geminiMessages.length - 1;
+          geminiMessages[lastIdx] = {
+            ...geminiMessages[lastIdx],
+            content:
+              `${geminiMessages[lastIdx].content}\n\n[lookup_customer_by_phone → ${phoneMatch[1]}]: ${JSON.stringify(lookupResult).slice(0, 500)}`,
+          };
+          console.log(`[Chatbot] AUTO_PHONE_LOOKUP | phone="${phoneMatch[1]}" | found=${lr?.found}`);
+        } catch {
+          // lookup failed — continue without it, Gemini will ask normally
+        }
+      }
+
       // Call AI with tool use loop
       let geminiReqs = 0;
       let response;
@@ -325,10 +369,158 @@ export class AIChatbotService {
         }
       }
 
+      // ── Guard: hallucinated /confirm/ URL without calling create_order_confirmation ──
+      // Gemini sometimes fabricates a /confirm/<token> URL (e.g. /confirm/1234567890)
+      // from training data instead of calling the tool. Detect and force a retry.
+      if (
+        !hasError &&
+        response.text &&
+        /\/confirm\/[A-Za-z0-9]/.test(response.text) &&
+        !executedTools.some((t) => t.name === 'create_order_confirmation')
+      ) {
+        console.warn(`[Chatbot] HALLUCINATED_CONFIRM_URL | question="${userMessage}" — forcing tool retry`);
+        geminiMessages.push({
+          role: 'user' as const,
+          content: '[SYSTEM] Phản hồi vừa rồi chứa URL /confirm/ nhưng tool create_order_confirmation CHƯA được gọi. URL đó là bịa — tuyệt đối không dùng. Hãy gọi NGAY create_order_confirmation với đầy đủ thông tin đặt hàng đã thu thập trong cuộc hội thoại này.',
+        });
+        try {
+          response = await this.adapter.chat({
+            systemPrompt: SYSTEM_PROMPT,
+            messages: geminiMessages,
+            tools: TOOL_DEFINITIONS,
+          });
+          geminiReqs++;
+          // Re-run tool loop for the corrected response
+          while (response.toolCalls.length > 0 && loopCount < aiConfig.maxToolCalls) {
+            loopCount++;
+            const retryToolResults = await Promise.all(
+              response.toolCalls.map(async (tc) => {
+                try {
+                  const r = await this.toolsService.executeTool(tc.name, tc.args, sessionId, clientUrl);
+                  if (tc.name === 'escalate_to_human') escalated = true;
+                  executedTools.push({ name: tc.name, args: tc.args, result: r as Record<string, unknown> });
+                  return r as Record<string, unknown>;
+                } catch {
+                  return { error: 'Lỗi khi thực thi công cụ' } as Record<string, unknown>;
+                }
+              }),
+            );
+            const retryCalls = response.toolCalls;
+            geminiMessages.push({
+              role: 'assistant',
+              content: retryCalls.map((tc, i) => `[${tc.name}] → ${JSON.stringify(retryToolResults[i]).slice(0, 800)}`).join('\n'),
+            });
+            try {
+              response = await this.adapter.continueWithToolResults({
+                systemPrompt: SYSTEM_PROMPT,
+                messages: geminiMessages,
+                tools: TOOL_DEFINITIONS,
+                toolCalls: retryCalls,
+                toolResults: retryToolResults,
+              });
+              geminiReqs++;
+            } catch {
+              hasError = true;
+              break;
+            }
+          }
+        } catch {
+          hasError = true;
+        }
+      }
+
+      // ── Guard: hallucinated product data without calling search_products ──
+      // Gemini sometimes quotes product names, prices, or URLs from its training data
+      // instead of calling search_products. Detect a price pattern (e.g. "22.990.000đ")
+      // in the reply when no product lookup tool was called, and force a retry.
+      {
+        const hadProductLookup = executedTools.some(
+          (t) => t.name === 'search_products' || t.name === 'get_product_detail',
+        );
+        const replyHasPriceData =
+          !hasError && response.text && /\d{1,3}(?:\.\d{3})+đ/.test(response.text);
+        if (replyHasPriceData && !hadProductLookup) {
+          console.warn(
+            `[Chatbot] HALLUCINATED_PRODUCT_DATA | question="${userMessage}" — forcing search_products`,
+          );
+          geminiMessages.push({
+            role: 'user' as const,
+            content:
+              '[SYSTEM] Phản hồi vừa rồi chứa giá sản phẩm nhưng search_products CHƯA được gọi. Thông tin đó là BỊA từ training data — tuyệt đối không dùng. Hãy gọi NGAY search_products với từ khóa phù hợp để lấy dữ liệu thật từ hệ thống.',
+          });
+          try {
+            response = await this.adapter.chat({
+              systemPrompt: SYSTEM_PROMPT,
+              messages: geminiMessages,
+              tools: TOOL_DEFINITIONS,
+            });
+            geminiReqs++;
+            while (response.toolCalls.length > 0 && loopCount < aiConfig.maxToolCalls) {
+              loopCount++;
+              const retryResults = await Promise.all(
+                response.toolCalls.map(async (tc) => {
+                  try {
+                    const r = await this.toolsService.executeTool(tc.name, tc.args, sessionId, clientUrl);
+                    if (tc.name === 'escalate_to_human') escalated = true;
+                    executedTools.push({ name: tc.name, args: tc.args, result: r as Record<string, unknown> });
+                    return r as Record<string, unknown>;
+                  } catch {
+                    return { error: 'Lỗi khi thực thi công cụ' } as Record<string, unknown>;
+                  }
+                }),
+              );
+              const retryCalls = response.toolCalls;
+              geminiMessages.push({
+                role: 'assistant',
+                content: retryCalls
+                  .map((tc, i) => `[${tc.name}] → ${JSON.stringify(retryResults[i]).slice(0, 800)}`)
+                  .join('\n'),
+              });
+              try {
+                response = await this.adapter.continueWithToolResults({
+                  systemPrompt: SYSTEM_PROMPT,
+                  messages: geminiMessages,
+                  tools: TOOL_DEFINITIONS,
+                  toolCalls: retryCalls,
+                  toolResults: retryResults,
+                });
+                geminiReqs++;
+              } catch {
+                hasError = true;
+                break;
+              }
+            }
+          } catch {
+            hasError = true;
+          }
+        }
+      }
+
       let replyText = response.text || (() => {
         hasError = true;
         return "Xin lỗi, mình chưa thể xử lý yêu cầu này. Anh/chị vui lòng liên hệ hotline 0347.366.345 để được hỗ trợ nhé!";
       })();
+
+      // If Gemini returned empty text but create_order_confirmation ran successfully,
+      // use the replyDraft from the tool result instead of showing a generic error.
+      if (hasError) {
+        const orderTool = executedTools.find((t) => t.name === 'create_order_confirmation');
+        const orderDraft = orderTool ? (orderTool.result as any)?.replyDraft : null;
+        if (orderDraft) {
+          hasError = false;
+          replyText = orderDraft;
+        }
+      }
+
+      // Final safety: if replyText still contains a fake /confirm/ URL after retry,
+      // sanitize to prevent broken link from reaching the user.
+      if (
+        /\/confirm\/[A-Za-z0-9]/.test(replyText) &&
+        !executedTools.some((t) => t.name === 'create_order_confirmation')
+      ) {
+        hasError = true;
+        replyText = 'Mình gặp sự cố khi tạo link đặt hàng. Anh/chị vui lòng nhắn lại thông tin (tên, SĐT, địa chỉ, sản phẩm, số lượng) để mình xử lý lại nhé!';
+      }
 
       // Safety net: guarantee product links appear even when Gemini forgets.
       // Pulls URLs from tool results (get_product_detail.productUrl,
@@ -361,7 +553,10 @@ export class AIChatbotService {
             }
           }
         }
-        const missing = urlEntries.filter((e) => !replyText.includes(e.url));
+        // Only append URLs if Gemini included NONE — if it already included at least one,
+        // it deliberately omitted the rest (e.g. QT4: focus on specific model).
+        const alreadyHasUrl = urlEntries.some((e) => replyText.includes(e.url));
+        const missing = alreadyHasUrl ? [] : urlEntries.filter((e) => !replyText.includes(e.url));
         if (missing.length === 1) {
           replyText += `\n\n👉 Xem chi tiết: ${missing[0].url}`;
         } else if (missing.length > 1) {

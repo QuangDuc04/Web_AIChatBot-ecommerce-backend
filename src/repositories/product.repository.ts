@@ -276,6 +276,34 @@ export class ProductRepository {
       params[k] = `%${escapeLike(m)}%`;
     }
 
+    // ── 6b. Variant name: phrase matches ──
+    for (const phrase of analyzed.phrases) {
+      const k = `vsp${idx++}`;
+      const weight = phrase.split(/\s+/).length * 20;
+      scoreTerms.push(
+        `(CASE WHEN EXISTS (SELECT 1 FROM product_variants vv WHERE vv.productId = p.id AND vv.name LIKE :${k}) THEN ${weight} ELSE 0 END)`,
+      );
+      params[k] = `%${escapeLike(phrase)}%`;
+    }
+
+    // ── 6c. Variant name: individual word matches ──
+    for (const w of analyzed.words) {
+      const k = `vsw${idx++}`;
+      scoreTerms.push(
+        `(CASE WHEN EXISTS (SELECT 1 FROM product_variants vv WHERE vv.productId = p.id AND vv.name LIKE :${k}) THEN 10 ELSE 0 END)`,
+      );
+      params[k] = `%${escapeLike(w)}%`;
+    }
+
+    // ── 6d. Variant SKU: model number matches ──
+    for (const m of [...analyzed.modelNumbers, ...analyzed.modelVariants]) {
+      const k = `vsk${idx++}`;
+      scoreTerms.push(
+        `(CASE WHEN EXISTS (SELECT 1 FROM product_variants vv WHERE vv.productId = p.id AND vv.sku LIKE :${k}) THEN 20 ELSE 0 END)`,
+      );
+      params[k] = `%${escapeLike(m)}%`;
+    }
+
     // ── 7. FULLTEXT relevance bonus (only for words >= 3 chars) ──
     if (analyzed.fulltextWords.length > 0) {
       const k = `ft${idx++}`;
@@ -312,7 +340,41 @@ export class ProductRepository {
           [`${k}`]: analyzed.fulltextWords.map((w) => `${escapeLike(w)}*`).join(' '),
         });
       }
+      // ── Variant name / SKU matches ──
+      for (const w of analyzed.words) {
+        const k = `vwf${idx++}`;
+        sub.orWhere(
+          `EXISTS (SELECT 1 FROM product_variants vv WHERE vv.productId = p.id AND vv.name LIKE :${k})`,
+          { [k]: `%${escapeLike(w)}%` },
+        );
+      }
+      for (const m of [...analyzed.modelNumbers, ...analyzed.modelVariants]) {
+        const k = `vsf${idx++}`;
+        sub.orWhere(
+          `EXISTS (SELECT 1 FROM product_variants vv WHERE vv.productId = p.id AND vv.sku LIKE :${k})`,
+          { [k]: `%${escapeLike(m)}%` },
+        );
+      }
     }));
+
+    // ── requireExactModel: enforce at SQL level (also checks variants) ──
+    // Replaces the JS post-filter so products found only via variant are not excluded.
+    const requireExactModel = analyzed.modelNumbers.filter((m) => m.length >= 4);
+    if (requireExactModel.length > 0) {
+      qb.andWhere(new Brackets((exactSub) => {
+        for (const m of requireExactModel) {
+          const k1 = `em${idx++}`;
+          exactSub.orWhere(`p.name LIKE :${k1}`, { [k1]: `%${escapeLike(m)}%` });
+          const k2 = `ems${idx++}`;
+          exactSub.orWhere(`p.sku LIKE :${k2}`, { [k2]: `%${escapeLike(m)}%` });
+          const k3 = `emv${idx++}`;
+          exactSub.orWhere(
+            `EXISTS (SELECT 1 FROM product_variants vv WHERE vv.productId = p.id AND (vv.name LIKE :${k3} OR vv.sku LIKE :${k3}))`,
+            { [k3]: `%${escapeLike(m)}%` },
+          );
+        }
+      }));
+    }
 
     // Set all score params
     qb.setParameters(params);
@@ -326,23 +388,13 @@ export class ProductRepository {
     const fetchLimit = limit * 3;
     const rawAndEntities = await qb.take(fetchLimit).getRawAndEntities();
 
-    // When the query specifies a compound model ("K80x45"), require the
-    // product name/SKU to contain that exact model — otherwise generic
-    // prefix match would also return K80x65, K80x80, etc. which confuses
-    // the user who asked for a specific variant.
-    const requireExactModel = analyzed.modelNumbers.filter((m) => m.length >= 4);
-    const matchesExactModel = (p: Product) => {
-      if (requireExactModel.length === 0) return true;
-      const hay = `${p.name} ${p.sku || ''}`.toLowerCase();
-      return requireExactModel.some((m) => hay.includes(m.toLowerCase()));
-    };
-
+    // requireExactModel is now enforced at the SQL level above.
+    // JS post-filter only needs to check minScore.
     const filtered: Product[] = [];
     for (let i = 0; i < rawAndEntities.entities.length; i++) {
       const score = Number(rawAndEntities.raw[i]?.search_score ?? 0);
-      const entity = rawAndEntities.entities[i];
-      if (score >= minScore && matchesExactModel(entity)) {
-        filtered.push(entity);
+      if (score >= minScore) {
+        filtered.push(rawAndEntities.entities[i]);
         if (filtered.length >= limit) break;
       }
     }

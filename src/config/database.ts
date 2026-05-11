@@ -16,6 +16,7 @@ export const AppDataSource = new DataSource({
   logging: process.env.NODE_ENV === 'development',
   charset: 'utf8mb4',
   timezone: '+07:00',
+  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
   extra: {
     connectionLimit: 10,
     charset: 'utf8mb4_0900_ai_ci',
