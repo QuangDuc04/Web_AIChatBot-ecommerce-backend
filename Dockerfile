@@ -13,6 +13,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
+RUN node_modules/.bin/tsc --module commonjs --target ES2020 --esModuleInterop --skipLibCheck --experimentalDecorators --emitDecoratorMetadata --rootDir . --outDir dist migrations/*.ts || true
 
 # Stage 3: Runtime
 FROM node:18-alpine AS runner
@@ -27,8 +28,6 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=deps /prod_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./
-# Copy migrations for TypeORM
-COPY --from=builder /app/migrations ./migrations
 
 RUN chown -R appuser:nodejs /app
 USER appuser
