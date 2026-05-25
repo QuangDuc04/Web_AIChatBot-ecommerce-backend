@@ -500,6 +500,9 @@ export class AIChatbotService {
         return "Xin lỗi, mình chưa thể xử lý yêu cầu này. Anh/chị vui lòng liên hệ hotline 0347.366.345 để được hỗ trợ nhé!";
       })();
 
+      // Strip any hallucinated tool-result lines like "[search_products] → {...}"
+      replyText = replyText.replace(/^\[[\w_]+\]\s*→\s*\{[^\n]*\}\s*\n?/gm, '').trim();
+
       // If Gemini returned empty text but create_order_confirmation ran successfully,
       // use the replyDraft from the tool result instead of showing a generic error.
       if (hasError) {
