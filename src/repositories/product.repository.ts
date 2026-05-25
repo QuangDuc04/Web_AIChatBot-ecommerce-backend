@@ -45,19 +45,21 @@ export class ProductRepository {
           );
         });
       } else if (filters.searchMode === 'relaxed') {
-        // Relaxed: OR-based FULLTEXT + category name LIKE
-        const ftQuery = words.map((w) => `${w}*`).join(' ');
-        qb.andWhere(
-          '(MATCH(p.name, p.description, p.sku) AGAINST (:ftSearch IN BOOLEAN MODE) OR category.name LIKE :catSearch)',
-          { ftSearch: ftQuery, catSearch: `%${filters.search}%` },
-        );
+        // Relaxed: OR each word against p.name, description, category
+        words.forEach((w, i) => {
+          qb.orWhere(
+            `(p.name LIKE :rw${i} OR p.description LIKE :rw${i} OR category.name LIKE :rw${i})`,
+            { [`rw${i}`]: `%${w}%` },
+          );
+        });
       } else {
-        // Strict (default): AND-based FULLTEXT + category name LIKE fallback
-        const ftQuery = words.map((w) => `+${w}*`).join(' ');
-        qb.andWhere(
-          '(MATCH(p.name, p.description, p.sku) AGAINST (:ftSearch IN BOOLEAN MODE) OR category.name LIKE :catSearch)',
-          { ftSearch: ftQuery, catSearch: `%${filters.search}%` },
-        );
+        // Strict (default): AND each word against p.name OR category
+        words.forEach((w, i) => {
+          qb.andWhere(
+            `(p.name LIKE :dw${i} OR category.name LIKE :dw${i})`,
+            { [`dw${i}`]: `%${w}%` },
+          );
+        });
       }
     }
     if (filters.categoryId) qb.andWhere('p.categoryId = :categoryId', { categoryId: filters.categoryId });
@@ -304,14 +306,7 @@ export class ProductRepository {
       params[k] = `%${escapeLike(m)}%`;
     }
 
-    // ── 7. FULLTEXT relevance bonus (only for words >= 3 chars) ──
-    if (analyzed.fulltextWords.length > 0) {
-      const k = `ft${idx++}`;
-      scoreTerms.push(
-        `(COALESCE(MATCH(p.name, p.description, p.sku) AGAINST(:${k} IN BOOLEAN MODE), 0) * 2)`,
-      );
-      params[k] = analyzed.fulltextWords.map((w) => `${escapeLike(w)}*`).join(' ');
-    }
+    // ── 7. FULLTEXT bonus removed — TiDB Cloud free tier does not support FULLTEXT indexes ──
 
     const scoreExpr = scoreTerms.join(' + ');
     qb.addSelect(`(${scoreExpr})`, 'search_score');
@@ -334,12 +329,7 @@ export class ProductRepository {
         const k = `sf${idx++}`;
         sub.orWhere(`p.sku LIKE :${k}`, { [`${k}`]: `%${escapeLike(m)}%` });
       }
-      if (analyzed.fulltextWords.length > 0) {
-        const k = `ftf${idx++}`;
-        sub.orWhere(`MATCH(p.name, p.description, p.sku) AGAINST(:${k} IN BOOLEAN MODE)`, {
-          [`${k}`]: analyzed.fulltextWords.map((w) => `${escapeLike(w)}*`).join(' '),
-        });
-      }
+      // FULLTEXT removed — TiDB Cloud free tier does not support FULLTEXT indexes
       // ── Variant name / SKU matches ──
       for (const w of analyzed.words) {
         const k = `vwf${idx++}`;
