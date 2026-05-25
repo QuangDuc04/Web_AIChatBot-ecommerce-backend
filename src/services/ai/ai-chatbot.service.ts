@@ -259,7 +259,7 @@ export class AIChatbotService {
           const lr = lookupResult as Record<string, unknown>;
           const cust = lr?.customer as Record<string, unknown> | undefined;
           if (lr?.found && cust?.id) {
-            this.chatbotRepo.linkCustomer(sessionId, cust.id as string).catch(() => {});
+            this.chatbotRepo.linkCustomer(sessionId, cust.id as string).catch(() => { });
           }
           // Append result to the last user message so Gemini sees it as context
           const lastIdx = geminiMessages.length - 1;
@@ -316,16 +316,14 @@ export class AIChatbotService {
                 const r = result as Record<string, unknown>;
                 const cust = r?.customer as Record<string, unknown> | undefined;
                 if (r?.found && cust?.id) {
-                  this.chatbotRepo.linkCustomer(sessionId, cust.id as string).catch(() => {});
+                  this.chatbotRepo.linkCustomer(sessionId, cust.id as string).catch(() => { });
                 }
               }
               executedTools.push({ name: tc.name, args: tc.args, result: result as Record<string, unknown> });
               return result as Record<string, unknown>;
-            } catch {
-              return { error: "Lỗi khi thực thi công cụ" } as Record<
-                string,
-                unknown
-              >;
+            } catch (err: any) {
+              console.error(`[Chatbot] TOOL_ERROR | tool=${tc.name} | ${err?.message}`, err?.stack);
+              return { error: "Lỗi khi thực thi công cụ" };
             }
           }),
         );
@@ -620,7 +618,7 @@ export class AIChatbotService {
     // Persist to DB (fire-and-forget — never block response)
     this.chatbotRepo.findOrCreateSession(sessionId)
       .then((session) => this.chatbotRepo.saveMessages(session.id, userMessage, result.reply))
-      .catch(() => {});
+      .catch(() => { });
 
     return result;
   }
