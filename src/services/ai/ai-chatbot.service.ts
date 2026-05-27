@@ -366,6 +366,7 @@ export class AIChatbotService {
       // product/quantity/phone gathered in earlier turns. Inject a compact summary
       // of all collected order data into the current Gemini message.
       const orderStateSummary = extractOrderState(history);
+      console.log(`[Chatbot] ORDER_STATE | question="${userMessage.slice(0,40)}" | historyLen=${history.length} | summary=${orderStateSummary || 'null'}`);
       if (orderStateSummary) {
         const lastIdx = geminiMessages.length - 1;
         geminiMessages[lastIdx] = {
@@ -373,6 +374,7 @@ export class AIChatbotService {
           content: `${geminiMessages[lastIdx].content}\n\n${orderStateSummary}`,
         };
       }
+      console.log(`[Chatbot] GEMINI_CTX | msgCount=${geminiMessages.length} | lastMsg="${geminiMessages[geminiMessages.length-1]?.content?.slice(0,120)}..."`);
 
       // Call AI with tool use loop
       let geminiReqs = 0;
