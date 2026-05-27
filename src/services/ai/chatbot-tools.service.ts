@@ -196,17 +196,17 @@ export class ChatbotToolsService {
 
   private async searchProducts(args: Record<string, unknown>, clientUrl?: string) {
     const query = String(args.query || '');
-    const cacheKey = `chatbot:search:${query.toLowerCase()}`;
+    const minPrice = args.minPrice !== undefined ? Number(args.minPrice) : undefined;
+    const maxPrice = args.maxPrice !== undefined ? Number(args.maxPrice) : undefined;
+    const cacheKey = `chatbot:search:${query.toLowerCase()}:${minPrice ?? ''}:${maxPrice ?? ''}`;
 
     const cached = await CacheUtil.get(cacheKey);
     if (cached) {
-      console.log(`[Chatbot] REDIS_HIT | tool=search_products | query="${query}"`);
+      console.log(`[Chatbot] REDIS_HIT | tool=search_products | query="${query}" | price=${minPrice}-${maxPrice}`);
       return cached;
     }
-    console.log(`[Chatbot] REDIS_MISS | tool=search_products | query="${query}"`);
+    console.log(`[Chatbot] REDIS_MISS | tool=search_products | query="${query}" | price=${minPrice}-${maxPrice}`);
 
-    const minPrice = args.minPrice !== undefined ? Number(args.minPrice) : undefined;
-    const maxPrice = args.maxPrice !== undefined ? Number(args.maxPrice) : undefined;
     const result = await this.productRepo.scoredSearch(query, { limit: 5, minPrice, maxPrice });
     const resolvedClientUrl = clientUrl || process.env.CLIENT_URL || 'http://localhost:4000';
 
