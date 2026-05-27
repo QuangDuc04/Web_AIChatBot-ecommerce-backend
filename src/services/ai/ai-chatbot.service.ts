@@ -613,9 +613,24 @@ export class AIChatbotService {
     // Tool results are merged into the assistant message so follow-up messages
     // retain product IDs and search context (e.g. "xem chi tiết" after a search).
     history.push({ role: "user", content: userMessage });
+    // Build a compact tool-context summary for history so Gemini retains product
+    // IDs and names without being confused by raw JSON dumps.
     const toolContext = (result.executedTools ?? [])
       .filter((t) => !SKIP_CACHE_TOOLS.has(t.name))
-      .map((t) => `[${t.name}] → ${JSON.stringify(t.result).slice(0, 500)}`)
+      .map((t) => {
+        const r = t.result as any;
+        if (t.name === 'search_products' && Array.isArray(r?.products)) {
+          const items = r.products.slice(0, 5).map((p: any) =>
+            `id=${p.id} tên="${p.name}" giá=${p.sellingPrice}${p.inStock ? ' còn hàng' : ' hết hàng'}`
+          ).join(' | ');
+          return `[Kết quả tìm kiếm: ${items}]`;
+        }
+        if (t.name === 'get_product_detail' && r?.id) {
+          return `[Chi tiết SP: id=${r.id} tên="${r.name}" giá=${r.sellingPrice}]`;
+        }
+        // Other tools: compact JSON
+        return `[${t.name}] → ${JSON.stringify(t.result).slice(0, 300)}`;
+      })
       .join('\n');
     const assistantContent = toolContext
       ? `${toolContext}\n\n${result.reply}`
