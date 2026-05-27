@@ -9,15 +9,16 @@ export class ChatbotController {
   /** POST /api/chatbot/message — Send message, get AI response */
   async sendMessage(req: Request, res: Response, next: NextFunction) {
     try {
-      const { message } = req.body;
+      const { message, sessionId: bodySessionId } = req.body;
       if (!message?.trim()) {
         return ResponseUtil.error(res, 'Tin nhắn không được để trống', 400);
       }
 
-      // Use session ID from header or generate one
+      // Use session ID from header, body, or generate one
       const sessionId =
         (req.headers['x-session-id'] as string) ||
         (req.headers['x-chatbot-session'] as string) ||
+        bodySessionId ||
         crypto.randomUUID();
 
       const clientOrigin = req.headers.origin as string | undefined;
