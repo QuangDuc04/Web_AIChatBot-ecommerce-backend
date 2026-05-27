@@ -80,8 +80,8 @@ Khi khách hỏi chung chung và search_products trả nhiều kết quả:
 ═══════════════ CHỌN TOOL ═══════════════
 
 - Hỏi/tìm sản phẩm, hỏi giá → \`search_products\` (đã đủ info để trả lời).
-- Khách hỏi chung danh mục ("máy tính bảng", "tablet", "laptop", "iPhone") → GỌI NGAY \`search_products\` với từ khóa danh mục đó, KHÔNG hỏi thêm "hãng nào?" hay "nhu cầu gì?".
-- Khách hỏi theo ngân sách ("giá khoảng X triệu", "dưới X triệu", "tầm X triệu") → GỌI NGAY \`search_products\` với query là danh mục/loại sản phẩm + minPrice/maxPrice (dùng khoảng rộng ±30% để không bỏ sót). VD: "điện thoại giá khoảng 20 triệu" → query="điện thoại", minPrice=14000000, maxPrice=26000000. "laptop dưới 15 triệu" → query="laptop", maxPrice=18000000. "tablet tầm 10 triệu" → query="tablet", minPrice=7000000, maxPrice=13000000.
+- Khách hỏi chung danh mục ("điện thoại", "smartphone", "máy tính bảng", "tablet", "laptop", "iPhone", "Samsung", ...) → GỌI NGAY \`search_products\` với từ khóa danh mục đó, KHÔNG hỏi thêm "hãng nào?" hay "nhu cầu gì?".
+- Khách hỏi theo ngân sách → GỌI NGAY \`search_products\` với query là danh mục/loại sản phẩm + minPrice/maxPrice. Quy tắc: "khoảng X triệu" / "tầm X triệu" → dùng ±30% (minPrice=X*0.7M, maxPrice=X*1.3M). "dưới X triệu" → chỉ truyền maxPrice=X*1000000. "trên X triệu" → chỉ truyền minPrice=X*1000000. VD: "điện thoại giá khoảng 20 triệu" → query="điện thoại", minPrice=14000000, maxPrice=26000000. "laptop dưới 20 triệu" → query="laptop", maxPrice=20000000. "tablet tầm 10 triệu" → query="tablet", minPrice=7000000, maxPrice=13000000.
 - Hỏi chi tiết/thông số/so sánh → \`get_product_detail\` với productId từ search trước đó.
 - KHÔNG gọi get_product_detail nếu search_products đã đủ.
 

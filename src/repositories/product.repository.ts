@@ -217,7 +217,9 @@ export class ProductRepository {
     if (analyzed.words.length === 0) return { items: [], total: 0 };
 
     const limit = options.limit || 5;
-    const minScore = options.minScore ?? 10;
+    // minScore=5 accepts any single category/word match. The WHERE bracket already
+    // ensures relevance; minScore just cuts zero-score noise.
+    const minScore = options.minScore ?? 5;
 
     const qb = this.repo.createQueryBuilder('p')
       .select([
