@@ -97,8 +97,8 @@ Khi khách hỏi chung chung và search_products trả nhiều kết quả:
 
 0. BẮT BUỘC: Khi khách nói "mua", "đặt", "order" kèm tên sản phẩm → GỌI NGAY \`search_products\` để lấy \`id\` thật từ DB, rồi HỎI NGAY "Anh/chị mua bao nhiêu chiếc ạ?". TUYỆT ĐỐI không tự bịa productId hay giá. KHÔNG hỏi "cần tư vấn thêm?" khi khách đã có ý định mua rõ ràng.
    VD mẫu đúng:
-   Khách: "muốn mua MacBook Air M2" → Gọi search_products → "Dạ mình có MacBook Air M2 giá 24.990.000đ. Anh/chị mua bao nhiêu chiếc ạ?"
-   Khách: "1 chiếc" → Tiếp tục: "Anh/chị cho mình xin số điện thoại ạ?" (KHÔNG hỏi lại "sản phẩm gì?")
+   Khách: "muốn mua MacBook Air M2" → Gọi search_products → "Dạ mình có MacBook Air M2 giá 24.990.000đ. Anh/chị mua bao nhiêu chiếc MacBook Air M2 ạ?" (luôn kèm TÊN SẢN PHẨM vào câu hỏi số lượng)
+   Khách: "1 chiếc" → "Anh/chị cho mình xin số điện thoại ạ?" (KHÔNG hỏi lại "sản phẩm gì?", KHÔNG gọi lại search_products)
 1. Cần đủ 5 thông tin: TÊN + SĐT + ĐỊA CHỈ + SẢN PHẨM + SỐ LƯỢNG.
 2. Số lượng: HỎI rõ "Anh/chị mua bao nhiêu chiếc ạ?". CẤM mặc định = 1.
 3. SĐT: NGAY KHI khách cung cấp SĐT → GỌI NGAY \`lookup_customer_by_phone\` trước khi hỏi bất kỳ thông tin nào khác. Khách cũ (found=true) → xác nhận địa chỉ cũ, không hỏi lại. Khách mới (found=false) → hỏi những thông tin còn thiếu: nếu chưa có tên thì hỏi tên + địa chỉ, nếu đã có tên thì CHỈ hỏi địa chỉ.
@@ -148,6 +148,49 @@ const SKIP_CACHE_TOOLS = new Set([
   'create_order_confirmation',
   'escalate_to_human',
 ]);
+
+/**
+ * Scans conversation history for collected order data (product, quantity, phone).
+ * Returns a compact Vietnamese summary to inject into Gemini context so the model
+ * doesn't lose order state across multi-turn flows (critical for Gemini Flash Lite).
+ */
+function extractOrderState(history: ChatMessage[]): string | null {
+  let productId: string | null = null;
+  let productName: string | null = null;
+  let productPrice: number | null = null;
+  let quantity: number | null = null;
+  let phone: string | null = null;
+
+  for (const msg of history) {
+    if (msg.role === 'assistant') {
+      // Compact search/detail results: "id=xxx tên="Name" giá=NNN"
+      const m = msg.content.match(/id=(\S+)\s+tên="([^"]+)"\s+giá=(\d+)/);
+      if (m) { productId = m[1]; productName = m[2]; productPrice = parseInt(m[3]); }
+    }
+    if (msg.role === 'user') {
+      // Injected quantity: "1 chiếc (Product Name)" — captures product name too
+      const qtyWithProd = msg.content.match(/^(\d+)\s*(?:chiếc|cái|máy|bộ|cặp|đôi)?\s*\(([^)]+)\)/i);
+      if (qtyWithProd) { quantity = parseInt(qtyWithProd[1]); productName = qtyWithProd[2]; }
+      else {
+        const qtyOnly = msg.content.match(/^(\d+)\s*(?:chiếc|cái|máy|bộ|cặp|đôi)?\s*$/i);
+        if (qtyOnly) quantity = parseInt(qtyOnly[1]);
+      }
+      // Phone number (bare or from lookup line)
+      const phoneM = msg.content.match(/\b(0[3-9]\d{8})\b/);
+      if (phoneM) phone = phoneM[1];
+    }
+  }
+
+  if (!productId || quantity === null) return null;
+
+  const parts = [
+    `sản phẩm="${productName}" productId=${productId}`,
+    `số lượng=${quantity}`,
+  ];
+  if (productPrice) parts.push(`giá=${productPrice}`);
+  if (phone) parts.push(`SĐT=${phone}`);
+  return `[Trạng thái đặt hàng hiện tại: ${parts.join(', ')}]`;
+}
 
 export class AIChatbotService {
   private adapter: AIProviderAdapter;
@@ -208,6 +251,27 @@ export class AIChatbotService {
     const dedupKey = normalizeChatQuestion(userMessage);
     const isDedup = requestDedup.has(dedupKey);
 
+    // ── Quantity context injection (computed BEFORE dedup so history stores the enriched message) ──
+    // When the user replies with just a number / "N chiếc" after the bot asked "bao nhiêu chiếc?",
+    // Gemini often forgets which product was being discussed.
+    // Detect this pattern and append the product name from the last search result.
+    let effectiveUserMessage = userMessage;
+    {
+      const isQuantityOnly = /^\s*(\d+)\s*(chiếc|cái|máy|bộ|cặp|đôi)?\s*$/i.test(userMessage);
+      if (isQuantityOnly && history.length >= 2) {
+        for (let hi = history.length - 1; hi >= 0; hi--) {
+          const hm = history[hi];
+          if (hm.role === 'assistant') {
+            const nameMatch = hm.content.match(/tên="([^"]+)"/);
+            if (nameMatch) {
+              effectiveUserMessage = `${userMessage.trim()} (${nameMatch[1]})`;
+              break;
+            }
+          }
+        }
+      }
+    }
+
     const result = await requestDedup.dedup(dedupKey, async () => {
       // ── DB knowledge cache lookup — disabled: every question calls Gemini directly ──
       // const isSelfContained = isSelfContainedQuestion(userMessage);
@@ -237,28 +301,11 @@ export class AIChatbotService {
       //   } catch { /* Embedding search error — continue */ }
       // }
 
-      // ── Quantity context injection ──
-      // When the user replies with just a number / "N chiếc" after the bot asked
-      // "bao nhiêu chiếc?", Gemini often forgets which product was being discussed.
-      // Detect this pattern and prepend the product name from the last search result.
-      let effectiveMessage = userMessage;
-      const isQuantityOnly = /^\s*(\d+)\s*(chiếc|cái|máy|bộ|cặp|đôi)?\s*$/i.test(userMessage);
-      if (isQuantityOnly && history.length >= 2) {
-        // Find the last assistant message that contained a product search result
-        for (let hi = history.length - 1; hi >= 0; hi--) {
-          const hm = history[hi];
-          if (hm.role === 'assistant') {
-            const nameMatch = hm.content.match(/tên="([^"]+)"/);
-            if (nameMatch) {
-              effectiveMessage = `${userMessage.trim()} (${nameMatch[1]})`;
-              break;
-            }
-          }
-        }
-      }
+      // Track the full user content for history storage (augmented below with lookup summary)
+      let historyUserContent = effectiveUserMessage;
 
       // Build a local copy of messages for Gemini context (does NOT mutate session history)
-      const geminiMessages: ChatMessage[] = [...history, { role: "user" as const, content: effectiveMessage }];
+      const geminiMessages: ChatMessage[] = [...history, { role: "user" as const, content: effectiveUserMessage }];
 
       // Trim to max history, ensuring first message is always 'user' (Gemini requirement)
       while (geminiMessages.length > aiConfig.maxHistoryMessages) {
@@ -273,8 +320,9 @@ export class AIChatbotService {
       // has been done in this session yet, call the tool directly and append
       // the result to the last user message so Gemini has the context.
       const phoneMatch = userMessage.match(/\b(0[3-9]\d{8})\b/);
+      // Check using the Vietnamese summary format (what we store in history/context)
       const alreadyLookedUp = geminiMessages.some((m) =>
-        m.content.includes('[lookup_customer_by_phone]')
+        m.content.includes('[Tra cứu SĐT')
       );
       if (phoneMatch && !alreadyLookedUp) {
         try {
@@ -305,10 +353,25 @@ export class AIChatbotService {
             ...geminiMessages[lastIdx],
             content: `${geminiMessages[lastIdx].content}\n\n${lookupSummary}`,
           };
+          // Also store in history so subsequent turns retain the lookup context
+          historyUserContent += `\n\n${lookupSummary}`;
           console.log(`[Chatbot] AUTO_PHONE_LOOKUP | phone="${phoneMatch[1]}" | found=${lr?.found}`);
         } catch {
           // lookup failed — continue without it, Gemini will ask normally
         }
+      }
+
+      // ── Order state injection ──
+      // For multi-turn ordering flows, Gemini Flash Lite often loses track of
+      // product/quantity/phone gathered in earlier turns. Inject a compact summary
+      // of all collected order data into the current Gemini message.
+      const orderStateSummary = extractOrderState(history);
+      if (orderStateSummary) {
+        const lastIdx = geminiMessages.length - 1;
+        geminiMessages[lastIdx] = {
+          ...geminiMessages[lastIdx],
+          content: `${geminiMessages[lastIdx].content}\n\n${orderStateSummary}`,
+        };
       }
 
       // Call AI with tool use loop
@@ -634,7 +697,7 @@ export class AIChatbotService {
       //   }
       // }
 
-      return { reply: replyText, escalated, executedTools };
+      return { reply: replyText, escalated, executedTools, historyUserContent };
     });
 
     if (isDedup) {
@@ -644,7 +707,9 @@ export class AIChatbotService {
     // Save to session history (OUTSIDE dedup — every session gets its own history)
     // Tool results are merged into the assistant message so follow-up messages
     // retain product IDs and search context (e.g. "xem chi tiết" after a search).
-    history.push({ role: "user", content: userMessage });
+    // Use historyUserContent (enriched with product injection + lookup summary) so
+    // subsequent turns retain full order context without needing to re-compute.
+    history.push({ role: "user", content: result.historyUserContent ?? effectiveUserMessage });
     // Build a compact tool-context summary for history so Gemini retains product
     // IDs and names without being confused by raw JSON dumps.
     const toolContext = (result.executedTools ?? [])
