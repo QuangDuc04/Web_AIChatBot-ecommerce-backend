@@ -207,10 +207,12 @@ function isInOrderingFlow(history: { role: string; content: string }[]): boolean
  */
 const PROVIDING_INFO_RE = /(?:ten|so dien thoai|sdt|dt|phone|dia chi|email)\s*[:=]\s*\S/i;
 const PHONE_VALUE_RE = /(?:sdt|so dien thoai|dt|phone)\s*[:=]?\s*0\d{8,10}/i;
+// Any message that contains a Vietnamese mobile number is likely providing contact info, not asking FAQ.
+const BARE_PHONE_RE = /\b0[3-9]\d{8}\b/;
 
 function isProvidingOrderInfo(raw: string): boolean {
   const s = removeDiacritics(raw.toLowerCase());
-  return PROVIDING_INFO_RE.test(s) || PHONE_VALUE_RE.test(s);
+  return PROVIDING_INFO_RE.test(s) || PHONE_VALUE_RE.test(s) || BARE_PHONE_RE.test(raw);
 }
 
 export function matchFAQ(
