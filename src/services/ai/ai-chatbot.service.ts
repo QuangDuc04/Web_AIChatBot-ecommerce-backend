@@ -169,10 +169,10 @@ function extractOrderState(history: ChatMessage[]): string | null {
     }
     if (msg.role === 'user') {
       // Injected quantity: "1 chiếc (Product Name)" — captures product name too
-      const qtyWithProd = msg.content.match(/^(\d+)\s*(?:chiếc|cái|máy|bộ|cặp|đôi)?\s*\(([^)]+)\)/i);
+      const qtyWithProd = msg.content.match(/^(\d+)\s*(?:chiếc|chiec|cái|cai|máy|may|bộ|bo|cặp|cap|đôi|doi)?\s*\(([^)]+)\)/i);
       if (qtyWithProd) { quantity = parseInt(qtyWithProd[1]); productName = qtyWithProd[2]; }
       else {
-        const qtyOnly = msg.content.match(/^(\d+)\s*(?:chiếc|cái|máy|bộ|cặp|đôi)?\s*$/i);
+        const qtyOnly = msg.content.match(/^(\d+)\s*(?:chiếc|chiec|cái|cai|máy|may|bộ|bo|cặp|cap|đôi|doi)?\s*$/i);
         if (qtyOnly) quantity = parseInt(qtyOnly[1]);
       }
       // Phone number (bare or from lookup line)
@@ -257,7 +257,7 @@ export class AIChatbotService {
     // Detect this pattern and append the product name from the last search result.
     let effectiveUserMessage = userMessage;
     {
-      const isQuantityOnly = /^\s*(\d+)\s*(chiếc|cái|máy|bộ|cặp|đôi)?\s*$/i.test(userMessage);
+      const isQuantityOnly = /^\s*(\d+)\s*(chiếc|chiec|cái|cai|máy|may|bộ|bo|cặp|cap|đôi|doi)?\s*$/i.test(userMessage);
       if (isQuantityOnly && history.length >= 2) {
         for (let hi = history.length - 1; hi >= 0; hi--) {
           const hm = history[hi];
