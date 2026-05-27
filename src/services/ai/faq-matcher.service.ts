@@ -88,7 +88,9 @@ const FAQ_ENTRIES: FAQEntry[] = [
       'hotline',
       'số điện thoại',
       'địa chỉ cửa hàng',
-      'ở đâu',
+      'địa chỉ shop',
+      'cửa hàng ở',
+      'showroom',
     ],
     answer:
       'Dạ anh/chị liên hệ mình qua:\n• Hotline/Zalo: 0353.643.396 (8h–20h, Thứ Hai – Chủ nhật).\n• Email: son.lequang97@gmail.com.\n• Địa chỉ: Khu phố Chiêu Liêu, Phường Tân Đông Hiệp, Dĩ An, Bình Dương.\nMình luôn sẵn sàng hỗ trợ anh/chị ạ!',

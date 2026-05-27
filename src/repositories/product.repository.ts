@@ -213,7 +213,7 @@ export class ProductRepository {
    */
   async scoredSearch(
     query: string,
-    options: { limit?: number; minScore?: number } = {},
+    options: { limit?: number; minScore?: number; minPrice?: number; maxPrice?: number } = {},
   ): Promise<{ items: Product[]; total: number }> {
     const analyzed = analyzeSearchQuery(query);
     if (analyzed.words.length === 0) return { items: [], total: 0 };
@@ -313,6 +313,20 @@ export class ProductRepository {
 
     // ── WHERE: isActive + at least one signal matches ──
     qb.where('p.isActive = true');
+
+    // Price range filter (uses effective selling price: comparePrice when on sale, else price)
+    if (options.minPrice !== undefined) {
+      qb.andWhere(
+        '(CASE WHEN p.comparePrice > 0 AND p.comparePrice < p.price THEN p.comparePrice ELSE p.price END) >= :minPrice',
+        { minPrice: options.minPrice },
+      );
+    }
+    if (options.maxPrice !== undefined) {
+      qb.andWhere(
+        '(CASE WHEN p.comparePrice > 0 AND p.comparePrice < p.price THEN p.comparePrice ELSE p.price END) <= :maxPrice',
+        { maxPrice: options.maxPrice },
+      );
+    }
 
     qb.andWhere(new Brackets((sub) => {
       for (const w of analyzed.words) {

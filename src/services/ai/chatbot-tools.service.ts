@@ -22,11 +22,13 @@ import { OrderConfirmationService } from '../orderConfirmation.service';
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: 'search_products',
-    description: 'Tìm sản phẩm theo từ khóa. Trả về: id, tên, giá, danh mục, thương hiệu, tồn kho. Gọi ĐẦU TIÊN khi khách hỏi sản phẩm hoặc giá. Kết quả đủ để báo giá mà không cần gọi thêm get_product_detail.',
+    description: 'Tìm sản phẩm theo từ khóa và/hoặc khoảng giá. Trả về: id, tên, giá, danh mục, thương hiệu, tồn kho. Gọi ĐẦU TIÊN khi khách hỏi sản phẩm hoặc giá. Kết quả đủ để báo giá mà không cần gọi thêm get_product_detail. Khi khách hỏi theo ngân sách ("giá khoảng X", "dưới X triệu") → truyền minPrice/maxPrice (đơn vị đồng VND, VD: 20 triệu = 20000000).',
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Từ khóa tìm kiếm sản phẩm' },
+        query: { type: 'string', description: 'Từ khóa tìm kiếm sản phẩm (tên, danh mục, thương hiệu)' },
+        minPrice: { type: 'number', description: 'Giá tối thiểu (VND). VD: 15000000' },
+        maxPrice: { type: 'number', description: 'Giá tối đa (VND). VD: 25000000' },
       },
       required: ['query'],
     },
@@ -203,7 +205,9 @@ export class ChatbotToolsService {
     }
     console.log(`[Chatbot] REDIS_MISS | tool=search_products | query="${query}"`);
 
-    const result = await this.productRepo.scoredSearch(query, { limit: 5 });
+    const minPrice = args.minPrice !== undefined ? Number(args.minPrice) : undefined;
+    const maxPrice = args.maxPrice !== undefined ? Number(args.maxPrice) : undefined;
+    const result = await this.productRepo.scoredSearch(query, { limit: 5, minPrice, maxPrice });
     const resolvedClientUrl = clientUrl || process.env.CLIENT_URL || 'http://localhost:4000';
 
     // Project convention (NOT Shopify):
