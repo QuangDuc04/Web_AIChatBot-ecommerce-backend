@@ -327,12 +327,11 @@ export class ChatbotToolsService {
         .leftJoinAndSelect('p.variants', 'variants')
         .where('p.isActive = true');
 
-      // LIKE-based search: handles short Vietnamese words (e.g. "in")
-      // that FULLTEXT drops, and also matches category name
+      // LOWER() on both sides ensures case-insensitive match on TiDB Cloud (utf8mb4_bin).
       words.forEach((w, i) => {
         qb.andWhere(
-          `(p.name LIKE :dw${i} OR category.name LIKE :dw${i})`,
-          { [`dw${i}`]: `%${w}%` },
+          `(LOWER(p.name) LIKE :dw${i} OR LOWER(category.name) LIKE :dw${i})`,
+          { [`dw${i}`]: `%${w.toLowerCase()}%` },
         );
       });
 

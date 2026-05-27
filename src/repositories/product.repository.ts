@@ -36,28 +36,26 @@ export class ProductRepository {
     if (filters.search) {
       const words = filters.search.trim().split(/\s+/).filter(Boolean);
       if (filters.searchMode === 'like') {
-        // LIKE-based: AND each word against p.name OR category.name
-        // Handles short Vietnamese words (e.g. "in") that FULLTEXT drops
+        // LOWER() on both sides for TiDB Cloud (utf8mb4_bin) case-insensitive matching
         words.forEach((w, i) => {
           qb.andWhere(
-            `(p.name LIKE :lw${i} OR category.name LIKE :lw${i})`,
-            { [`lw${i}`]: `%${w}%` },
+            `(LOWER(p.name) LIKE :lw${i} OR LOWER(category.name) LIKE :lw${i})`,
+            { [`lw${i}`]: `%${w.toLowerCase()}%` },
           );
         });
       } else if (filters.searchMode === 'relaxed') {
-        // Relaxed: OR each word against p.name, description, category
         words.forEach((w, i) => {
           qb.orWhere(
-            `(p.name LIKE :rw${i} OR p.description LIKE :rw${i} OR category.name LIKE :rw${i})`,
-            { [`rw${i}`]: `%${w}%` },
+            `(LOWER(p.name) LIKE :rw${i} OR LOWER(p.description) LIKE :rw${i} OR LOWER(category.name) LIKE :rw${i})`,
+            { [`rw${i}`]: `%${w.toLowerCase()}%` },
           );
         });
       } else {
         // Strict (default): AND each word against p.name OR category
         words.forEach((w, i) => {
           qb.andWhere(
-            `(p.name LIKE :dw${i} OR category.name LIKE :dw${i})`,
-            { [`dw${i}`]: `%${w}%` },
+            `(LOWER(p.name) LIKE :dw${i} OR LOWER(category.name) LIKE :dw${i})`,
+            { [`dw${i}`]: `%${w.toLowerCase()}%` },
           );
         });
       }
@@ -235,40 +233,41 @@ export class ProductRepository {
     let idx = 0;
 
     // ── 1. Phrase matches in p.name (longer phrase = higher weight) ──
+    // LOWER() on both sides ensures case-insensitive match on TiDB Cloud (utf8mb4_bin).
     for (const phrase of analyzed.phrases) {
       const k = `sp${idx++}`;
       const weight = phrase.split(/\s+/).length * 20; // 2w=40, 3w=60, 4w=80
-      scoreTerms.push(`(CASE WHEN p.name LIKE :${k} THEN ${weight} ELSE 0 END)`);
-      params[k] = `%${escapeLike(phrase)}%`;
+      scoreTerms.push(`(CASE WHEN LOWER(p.name) LIKE :${k} THEN ${weight} ELSE 0 END)`);
+      params[k] = `%${escapeLike(phrase.toLowerCase())}%`;
     }
 
     // ── 2. Individual word matches in p.name ──
     for (const w of analyzed.words) {
       const k = `sw${idx++}`;
-      scoreTerms.push(`(CASE WHEN p.name LIKE :${k} THEN 10 ELSE 0 END)`);
-      params[k] = `%${escapeLike(w)}%`;
+      scoreTerms.push(`(CASE WHEN LOWER(p.name) LIKE :${k} THEN 10 ELSE 0 END)`);
+      params[k] = `%${escapeLike(w.toLowerCase())}%`;
     }
 
     // ── 3. Model variant matches in p.name ──
     for (const v of analyzed.modelVariants) {
       const k = `sv${idx++}`;
-      scoreTerms.push(`(CASE WHEN p.name LIKE :${k} THEN 15 ELSE 0 END)`);
-      params[k] = `%${escapeLike(v)}%`;
+      scoreTerms.push(`(CASE WHEN LOWER(p.name) LIKE :${k} THEN 15 ELSE 0 END)`);
+      params[k] = `%${escapeLike(v.toLowerCase())}%`;
     }
 
     // ── 4. Category name: phrase match ──
     if (analyzed.descriptiveWords.length >= 2) {
       const k = `cp${idx++}`;
       const phrase = analyzed.descriptiveWords.join(' ');
-      scoreTerms.push(`(CASE WHEN category.name LIKE :${k} THEN 15 ELSE 0 END)`);
-      params[k] = `%${escapeLike(phrase)}%`;
+      scoreTerms.push(`(CASE WHEN LOWER(category.name) LIKE :${k} THEN 15 ELSE 0 END)`);
+      params[k] = `%${escapeLike(phrase.toLowerCase())}%`;
     }
 
     // ── 5. Category name: individual word matches ──
     for (const w of analyzed.descriptiveWords) {
       const k = `cw${idx++}`;
-      scoreTerms.push(`(CASE WHEN category.name LIKE :${k} THEN 5 ELSE 0 END)`);
-      params[k] = `%${escapeLike(w)}%`;
+      scoreTerms.push(`(CASE WHEN LOWER(category.name) LIKE :${k} THEN 5 ELSE 0 END)`);
+      params[k] = `%${escapeLike(w.toLowerCase())}%`;
     }
 
     // ── 6. SKU matches for model numbers + variants ──
@@ -283,18 +282,18 @@ export class ProductRepository {
       const k = `vsp${idx++}`;
       const weight = phrase.split(/\s+/).length * 20;
       scoreTerms.push(
-        `(CASE WHEN EXISTS (SELECT 1 FROM product_variants vv WHERE vv.productId = p.id AND vv.name LIKE :${k}) THEN ${weight} ELSE 0 END)`,
+        `(CASE WHEN EXISTS (SELECT 1 FROM product_variants vv WHERE vv.productId = p.id AND LOWER(vv.name) LIKE :${k}) THEN ${weight} ELSE 0 END)`,
       );
-      params[k] = `%${escapeLike(phrase)}%`;
+      params[k] = `%${escapeLike(phrase.toLowerCase())}%`;
     }
 
     // ── 6c. Variant name: individual word matches ──
     for (const w of analyzed.words) {
       const k = `vsw${idx++}`;
       scoreTerms.push(
-        `(CASE WHEN EXISTS (SELECT 1 FROM product_variants vv WHERE vv.productId = p.id AND vv.name LIKE :${k}) THEN 10 ELSE 0 END)`,
+        `(CASE WHEN EXISTS (SELECT 1 FROM product_variants vv WHERE vv.productId = p.id AND LOWER(vv.name) LIKE :${k}) THEN 10 ELSE 0 END)`,
       );
-      params[k] = `%${escapeLike(w)}%`;
+      params[k] = `%${escapeLike(w.toLowerCase())}%`;
     }
 
     // ── 6d. Variant SKU: model number matches ──
@@ -326,33 +325,34 @@ export class ProductRepository {
 
     qb.andWhere(new Brackets((sub) => {
       for (const w of analyzed.words) {
+        const wl = w.toLowerCase();
         const k = `wf${idx++}`;
-        sub.orWhere(`p.name LIKE :${k}`, { [`${k}`]: `%${escapeLike(w)}%` });
+        sub.orWhere(`LOWER(p.name) LIKE :${k}`, { [`${k}`]: `%${escapeLike(wl)}%` });
         const k2 = `cf${idx++}`;
-        sub.orWhere(`category.name LIKE :${k2}`, { [`${k2}`]: `%${escapeLike(w)}%` });
+        sub.orWhere(`LOWER(category.name) LIKE :${k2}`, { [`${k2}`]: `%${escapeLike(wl)}%` });
       }
       for (const v of analyzed.modelVariants) {
         const k = `vf${idx++}`;
-        sub.orWhere(`p.name LIKE :${k}`, { [`${k}`]: `%${escapeLike(v)}%` });
+        sub.orWhere(`LOWER(p.name) LIKE :${k}`, { [`${k}`]: `%${escapeLike(v.toLowerCase())}%` });
       }
       for (const m of [...analyzed.modelNumbers, ...analyzed.modelVariants]) {
         const k = `sf${idx++}`;
-        sub.orWhere(`p.sku LIKE :${k}`, { [`${k}`]: `%${escapeLike(m)}%` });
+        sub.orWhere(`LOWER(p.sku) LIKE :${k}`, { [`${k}`]: `%${escapeLike(m.toLowerCase())}%` });
       }
       // FULLTEXT removed — TiDB Cloud free tier does not support FULLTEXT indexes
       // ── Variant name / SKU matches ──
       for (const w of analyzed.words) {
         const k = `vwf${idx++}`;
         sub.orWhere(
-          `EXISTS (SELECT 1 FROM product_variants vv WHERE vv.productId = p.id AND vv.name LIKE :${k})`,
-          { [k]: `%${escapeLike(w)}%` },
+          `EXISTS (SELECT 1 FROM product_variants vv WHERE vv.productId = p.id AND LOWER(vv.name) LIKE :${k})`,
+          { [k]: `%${escapeLike(w.toLowerCase())}%` },
         );
       }
       for (const m of [...analyzed.modelNumbers, ...analyzed.modelVariants]) {
         const k = `vsf${idx++}`;
         sub.orWhere(
-          `EXISTS (SELECT 1 FROM product_variants vv WHERE vv.productId = p.id AND vv.sku LIKE :${k})`,
-          { [k]: `%${escapeLike(m)}%` },
+          `EXISTS (SELECT 1 FROM product_variants vv WHERE vv.productId = p.id AND LOWER(vv.sku) LIKE :${k})`,
+          { [k]: `%${escapeLike(m.toLowerCase())}%` },
         );
       }
     }));
@@ -363,14 +363,15 @@ export class ProductRepository {
     if (requireExactModel.length > 0) {
       qb.andWhere(new Brackets((exactSub) => {
         for (const m of requireExactModel) {
+          const ml = m.toLowerCase();
           const k1 = `em${idx++}`;
-          exactSub.orWhere(`p.name LIKE :${k1}`, { [k1]: `%${escapeLike(m)}%` });
+          exactSub.orWhere(`LOWER(p.name) LIKE :${k1}`, { [k1]: `%${escapeLike(ml)}%` });
           const k2 = `ems${idx++}`;
-          exactSub.orWhere(`p.sku LIKE :${k2}`, { [k2]: `%${escapeLike(m)}%` });
+          exactSub.orWhere(`LOWER(p.sku) LIKE :${k2}`, { [k2]: `%${escapeLike(ml)}%` });
           const k3 = `emv${idx++}`;
           exactSub.orWhere(
-            `EXISTS (SELECT 1 FROM product_variants vv WHERE vv.productId = p.id AND (vv.name LIKE :${k3} OR vv.sku LIKE :${k3}))`,
-            { [k3]: `%${escapeLike(m)}%` },
+            `EXISTS (SELECT 1 FROM product_variants vv WHERE vv.productId = p.id AND (LOWER(vv.name) LIKE :${k3} OR LOWER(vv.sku) LIKE :${k3}))`,
+            { [k3]: `%${escapeLike(ml)}%` },
           );
         }
       }));
