@@ -269,12 +269,21 @@ export class AIChatbotService {
           if (lr?.found && cust?.id) {
             this.chatbotRepo.linkCustomer(sessionId, cust.id as string).catch(() => { });
           }
-          // Append result to the last user message so Gemini sees it as context
+          // Append result to the last user message so Gemini sees it as context.
+          // Use Vietnamese summary (not raw JSON / tool-call format) to avoid
+          // confusing Gemini into thinking this is a fresh conversation.
+          const lr2 = lookupResult as Record<string, unknown>;
+          const cust2 = lr2?.customer as Record<string, unknown> | undefined;
+          let lookupSummary: string;
+          if (lr2?.found && cust2) {
+            lookupSummary = `[Tra cứu SĐT ${phoneMatch[1]}: Khách cũ — tên "${cust2.name}", địa chỉ "${cust2.address || 'chưa có'}"]`;
+          } else {
+            lookupSummary = `[Tra cứu SĐT ${phoneMatch[1]}: Khách mới, chưa có thông tin]`;
+          }
           const lastIdx = geminiMessages.length - 1;
           geminiMessages[lastIdx] = {
             ...geminiMessages[lastIdx],
-            content:
-              `${geminiMessages[lastIdx].content}\n\n[lookup_customer_by_phone → ${phoneMatch[1]}]: ${JSON.stringify(lookupResult).slice(0, 500)}`,
+            content: `${geminiMessages[lastIdx].content}\n\n${lookupSummary}`,
           };
           console.log(`[Chatbot] AUTO_PHONE_LOOKUP | phone="${phoneMatch[1]}" | found=${lr?.found}`);
         } catch {
