@@ -314,18 +314,14 @@ export class ProductRepository {
     // ── WHERE: isActive + at least one signal matches ──
     qb.where('p.isActive = true');
 
-    // Price range filter (uses effective selling price: comparePrice when on sale, else price)
+    // Price range filter: use p.price (base selling price).
+    // comparePrice is the promotional/sale price when it exists; most products have it NULL.
+    // Simpler p.price filter avoids CASE WHEN NULL issues on TiDB Cloud.
     if (options.minPrice !== undefined) {
-      qb.andWhere(
-        '(CASE WHEN p.comparePrice > 0 AND p.comparePrice < p.price THEN p.comparePrice ELSE p.price END) >= :minPrice',
-        { minPrice: options.minPrice },
-      );
+      qb.andWhere('p.price >= :minPrice', { minPrice: options.minPrice });
     }
     if (options.maxPrice !== undefined) {
-      qb.andWhere(
-        '(CASE WHEN p.comparePrice > 0 AND p.comparePrice < p.price THEN p.comparePrice ELSE p.price END) <= :maxPrice',
-        { maxPrice: options.maxPrice },
-      );
+      qb.andWhere('p.price <= :maxPrice', { maxPrice: options.maxPrice });
     }
 
     qb.andWhere(new Brackets((sub) => {

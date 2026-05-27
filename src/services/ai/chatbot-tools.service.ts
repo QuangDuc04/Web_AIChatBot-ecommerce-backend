@@ -207,7 +207,18 @@ export class ChatbotToolsService {
     }
     console.log(`[Chatbot] REDIS_MISS | tool=search_products | query="${query}" | price=${minPrice}-${maxPrice}`);
 
-    const result = await this.productRepo.scoredSearch(query, { limit: 5, minPrice, maxPrice });
+    let result = await this.productRepo.scoredSearch(query, { limit: 5, minPrice, maxPrice });
+
+    // If price-range search returns empty, widen the range by ~2× and retry once.
+    // This handles cases where Gemini uses a slightly tighter window than expected
+    // (e.g. ±10% instead of ±25%) and a product sits just outside the boundary.
+    if (result.total === 0 && (minPrice !== undefined || maxPrice !== undefined)) {
+      const wideMin = minPrice !== undefined ? Math.round(minPrice * 0.7) : undefined;
+      const wideMax = maxPrice !== undefined ? Math.round(maxPrice * 1.3) : undefined;
+      console.log(`[Chatbot] PRICE_FALLBACK | query="${query}" | original=${minPrice}-${maxPrice} | widened=${wideMin}-${wideMax}`);
+      result = await this.productRepo.scoredSearch(query, { limit: 5, minPrice: wideMin, maxPrice: wideMax });
+    }
+
     const resolvedClientUrl = clientUrl || process.env.CLIENT_URL || 'http://localhost:4000';
 
     // Project convention (NOT Shopify):
