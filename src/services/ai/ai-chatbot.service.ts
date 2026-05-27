@@ -237,8 +237,28 @@ export class AIChatbotService {
       //   } catch { /* Embedding search error — continue */ }
       // }
 
+      // ── Quantity context injection ──
+      // When the user replies with just a number / "N chiếc" after the bot asked
+      // "bao nhiêu chiếc?", Gemini often forgets which product was being discussed.
+      // Detect this pattern and prepend the product name from the last search result.
+      let effectiveMessage = userMessage;
+      const isQuantityOnly = /^\s*(\d+)\s*(chiếc|cái|máy|bộ|cặp|đôi)?\s*$/i.test(userMessage);
+      if (isQuantityOnly && history.length >= 2) {
+        // Find the last assistant message that contained a product search result
+        for (let hi = history.length - 1; hi >= 0; hi--) {
+          const hm = history[hi];
+          if (hm.role === 'assistant') {
+            const nameMatch = hm.content.match(/tên="([^"]+)"/);
+            if (nameMatch) {
+              effectiveMessage = `${userMessage.trim()} (${nameMatch[1]})`;
+              break;
+            }
+          }
+        }
+      }
+
       // Build a local copy of messages for Gemini context (does NOT mutate session history)
-      const geminiMessages: ChatMessage[] = [...history, { role: "user" as const, content: userMessage }];
+      const geminiMessages: ChatMessage[] = [...history, { role: "user" as const, content: effectiveMessage }];
 
       // Trim to max history, ensuring first message is always 'user' (Gemini requirement)
       while (geminiMessages.length > aiConfig.maxHistoryMessages) {
