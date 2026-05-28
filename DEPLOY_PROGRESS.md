@@ -1,6 +1,6 @@
 # Deployment Progress — Natro E-commerce
 
-> Cập nhật: 2026-05-25. Dùng file này để tiếp tục deploy khi quay lại.
+> Cập nhật: 2026-05-25 (lần 3). Dùng file này để tiếp tục deploy khi quay lại.
 
 ---
 
@@ -69,14 +69,54 @@ Deploy 3 service lên cloud miễn phí:
 - **Fix:** Thêm env var vào Vercel Dashboard cho `ecommerce-admin`:
   - `VITE_SOCKET_URL=https://webnew-backend.onrender.com` (không có dấu cách, không có `/` cuối)
 
-#### Env vars đã set trên Render
+### Bước 11 — Fix Chatbot lỗi FULLTEXT / search_products (2026-05-25)
+- **Nguyên nhân:** Local dùng MySQL (hỗ trợ FULLTEXT), cloud dùng TiDB Cloud free tier (không hỗ trợ FULLTEXT). Migrations 23-24 đã bị disable (không tạo FULLTEXT index) nhưng code query trong `product.repository.ts` vẫn còn dùng `MATCH ... AGAINST` → TiDB throw `UnknownType: *ast.MatchAgainst`
+- **Fix:** Xóa toàn bộ `MATCH ... AGAINST` trong `product.repository.ts`, thay bằng `LIKE`:
+  - `findAll`: `searchMode='relaxed'` và default đổi sang LIKE từng từ
+  - `scoredSearch`: xóa FULLTEXT bonus score (bước 7) và FULLTEXT WHERE clause
+- File sửa: `ecommerce-backend/src/repositories/product.repository.ts`
+- **Kết quả:** Chatbot search sản phẩm hoạt động, trả lời đúng format ✅
+
+### Bước 12 — Fix Chatbot hallucinate tool result (2026-05-25)
+- **Nguyên nhân:** Gemini tự bịa kết quả `[lookup_customer_by_phone] → {"found":false}` dưới dạng text thay vì gọi function calling thật sự (`geminiReqs=1 | tools=[none]`)
+- **Fix 1:** Thêm rule vào ⛔ NGHIÊM CẤM trong system prompt: cấm viết tên tool / JSON result / dạng `[tool_name] → {...}` trong câu trả lời
+- **Fix 2:** Sửa rule `found=false` — nếu khách đã cung cấp tên thì chỉ hỏi địa chỉ, không hỏi lại tên
+- File sửa: `ecommerce-backend/src/services/ai/ai-chatbot.service.ts`
+
+### Bước 13 — Update layout & UI storefront (2026-05-25)
+- Bạn tự sửa layout và phần liên hệ trong `paper-web`
+- Push lên Vercel, deploy thành công
+- Web hiển thị đầy đủ sản phẩm, layout, liên hệ ✅
+
+### Bước 14 — Fix chatbot hiển thị raw JSON tool result (2026-05-25)
+- **Nguyên nhân:** Gemini đôi khi hallucinate hoặc include kết quả tool dưới dạng text `[search_products] → {"total":5,...}` trong reply trả về frontend
+- **Fix backend:** Thêm regex filter trong `ai-chatbot.service.ts` sau khi lấy `replyText`, strip các dòng khớp pattern `[tool_name] → {...}` trước khi trả về
+- **Fix frontend:** Thêm `min-w-0 overflow-hidden` vào message bubble và `break-words` vào `RichText` trong `ConsultationWidget` để tránh URL dài tràn khỏi khung chat
+- Files sửa:
+  - `ecommerce-backend/src/services/ai/ai-chatbot.service.ts`
+  - `paper-web/src/components/ConsultationWidget/index.tsx`
+- **Kết quả:** Reply sạch, không còn raw JSON, URL không tràn khung ✅
+
+---
+
+## ⚠️ VẤN ĐỀ NHỎ CÒN LẠI
+
+| Vấn đề | Mô tả |
+|--------|-------|
+| Ảnh `via.placeholder.com` | Một số sản phẩm trong DB có URL ảnh placeholder giả, `via.placeholder.com` hiện đang bị chặn. Cần upload ảnh thật qua admin dashboard cho các sản phẩm đó. |
+
+---
+
+## Env vars đầy đủ
+
+#### Render — ecommerce-backend
 ```
 NODE_ENV=production
 PORT=5000
 DB_HOST=gateway01.ap-southeast-1.prod.aws.tidbcloud.com
 DB_PORT=4000
 DB_USERNAME=3mX2uR8YQPsKUzM.root
-DB_PASSWORD=ryeqp9Aet8Iiklij   ← đã cập nhật lại sau khi reset TiDB password
+DB_PASSWORD=ryeqp9Aet8Iiklij
 DB_NAME=ecommerce
 DB_SSL=true
 JWT_SECRET=...
@@ -96,14 +136,14 @@ GEMINI_FALLBACK_MODELS=gemini-2.5-flash-lite
 CORS_ORIGIN=https://web-ai-chat-bot-ecommerce-web.vercel.app,https://web-ai-chat-bot-ecommerce-admin.vercel.app
 ```
 
-#### Env vars đã set trên Vercel — ecommerce-admin
+#### Vercel — ecommerce-admin
 ```
 VITE_API_URL=https://webnew-backend.onrender.com/api
 VITE_APP_NAME=Ecommerce Admin
 VITE_SOCKET_URL=https://webnew-backend.onrender.com
 ```
 
-#### Env vars đã set trên Vercel — paper-web
+#### Vercel — paper-web
 ```
 NEXT_PUBLIC_API_URL=https://webnew-backend.onrender.com/api
 NEXT_PUBLIC_SITE_URL=https://web-ai-chat-bot-ecommerce-web.vercel.app
@@ -114,52 +154,21 @@ NEXT_PUBLIC_STORE_MAP_EMBED=...
 
 ---
 
-## ❌ ĐANG LỖI — Chatbot AI (Gemini)
-
-**Lỗi:** `400 Bad Request: User location is not supported for the API use`
-
-**Nguyên nhân:** IP của Render bị Google AI Studio (`generativelanguage.googleapis.com`) chặn ở tầng hạ tầng. Không thể fix bằng cách đổi model Gemini hay tạo API key mới vì tất cả đều đi qua cùng endpoint bị chặn.
-
-**Đã thử:**
-- Đổi `GEMINI_MODEL=gemini-2.5-flash-lite`
-- Tạo API key mới từ Google Cloud Console
-- Kiểm tra API key restrictions (không phải nguyên nhân)
-
-**Giải pháp:** Chuyển sang **Groq** (miễn phí, không bị chặn IP, hỗ trợ function calling)
-- Model: `llama-3.3-70b-versatile`
-- SDK: `groq-sdk`
-- Cần: `GROQ_API_KEY` từ [console.groq.com](https://console.groq.com)
-- Code: tạo `groq.adapter.ts` implement `AIProviderAdapter`, cập nhật `ai-chatbot.service.ts`
-
----
-
-## ⚠️ VẤN ĐỀ NHỎ CÒN LẠI
-
-| Vấn đề | Mô tả |
-|--------|-------|
-| Ảnh `via.placeholder.com` | Một số sản phẩm trong DB có URL ảnh placeholder giả, `via.placeholder.com` hiện đang bị chặn. Cần upload ảnh thật qua admin dashboard cho các sản phẩm đó. |
-
----
-
 ## Ghi chú kỹ thuật
 
-### Các thứ đã fix để Render deploy được
+### TiDB vs MySQL — các điểm không tương thích
 | Vấn đề | Fix |
 |--------|-----|
-| `CHAR(36)` vs `VARCHAR(36)` FK incompatibility trên TiDB | Thay toàn bộ `CHAR(36)` → `VARCHAR(36)` trong tất cả migration files |
+| `CHAR(36)` vs `VARCHAR(36)` FK incompatibility | Thay toàn bộ `CHAR(36)` → `VARCHAR(36)` trong migration files |
 | Duplicate column `isActive` trong migration 17 | Xóa `isActive` khỏi `addColumns` |
-| FULLTEXT index không được support trên TiDB Cloud free tier | Migration 23 và 24 thành no-op |
-| Migration `.ts` files không chạy được trong production Docker | Compile migrations sang `.js` trong Dockerfile builder stage |
+| FULLTEXT index không support (free tier) | Migration 23-24 thành no-op; xóa `MATCH...AGAINST` trong repository code |
+| Migration `.ts` không chạy trong production | Compile migrations sang `.js` trong Dockerfile |
 | Import data: charset cp850 | Dùng `--skip-set-charset` + `--default-character-set=utf8mb4` |
 | Import data: duplicate entry | Dùng `--replace` |
 | Import data: column count mismatch (`isActive`) | Thêm cột `isActive` thủ công vào TiDB trước khi import |
 
-### Search không dùng FULLTEXT
-Migrations 23–24 (FULLTEXT index) đã bị disable vì TiDB Cloud free tier không hỗ trợ.
-Search dùng `LIKE` query thay thế — vẫn hoạt động, chỉ chậm hơn một chút.
+### react-quill + quill-blot-formatter
+Hai package này gây crash production Vite build nếu eager import. Luôn lazy load các component dùng `RichTextEditor` (`ProductForm`, `NewsList`).
 
 ### TiDB Cloud password
 Password đã được reset trong quá trình import data. Password hiện tại đã update vào Render env var `DB_PASSWORD`.
-
-### react-quill + quill-blot-formatter
-Hai package này gây crash production Vite build nếu eager import. Luôn lazy load các component dùng `RichTextEditor` (`ProductForm`, `NewsList`).

@@ -606,7 +606,10 @@ export class AIChatbotService {
       })();
 
       // Strip any hallucinated tool-result lines like "[search_products] → {...}"
-      replyText = replyText.replace(/^\[[\w_]+\]\s*→\s*\{[^\n]*\}\s*\n?/gm, '').trim();
+      replyText = replyText.replace(/^\[[\w_]+\]\s*→\s*\{[^\n]*\}\s*\n?/gm, '');
+
+      // Strip any hallucinated tool_code blocks
+      replyText = replyText.replace(/\[tool_code[\s\S]*?\]\n?/g, '').trim();
 
       // If Gemini returned empty text but create_order_confirmation ran successfully,
       // use the replyDraft from the tool result instead of showing a generic error.
