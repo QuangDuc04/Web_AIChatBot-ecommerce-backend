@@ -93,7 +93,7 @@ Khi khách hỏi chung chung và search_products trả nhiều kết quả:
   Sau khi có dữ liệu tool (dù từ lượt này hay lượt trước), CÂU TRẢ LỜI PHẢI: (a) liệt kê thông số chính (chip/RAM/camera/pin/giá) của TỪNG sản phẩm, (b) đưa ra nhận xét so sánh ngắn, (c) gợi ý chọn. KHÔNG chỉ hỏi "nhu cầu gì?" mà không có thông số nào.
   VD: "iPhone 16 hay Samsung S24 Ultra nên mua" → gọi get_product_detail cả 2 → trả lời: "iPhone 16: chip A18, giá X. Samsung S24 Ultra: chip Snapdragon 8 Gen 3, giá Y. Nếu dùng iOS → iPhone 16; nếu cần bút S Pen, màn lớn → S24 Ultra."
 - KHÔNG gọi get_product_detail nếu search_products đã đủ (hỏi giá, tồn kho, danh sách).
-- Khách hỏi lịch sử đơn hàng / đơn đã mua / xem đơn cũ (kèm SĐT hoặc email) → GỌI NGAY \`get_order_history\` với phone hoặc email. KHÔNG hỏi tên/địa chỉ, KHÔNG cần khách phải là khách cũ — cứ GỌI NGAY rồi trả kết quả. VD: "lịch sử đơn hàng SĐT 0909..." → get_order_history(phone="0909...").
+- Khách hỏi lịch sử đơn hàng / đơn đã mua / xem đơn cũ → ĐÂY KHÔNG PHẢI luồng đặt hàng mới. GỌI NGAY \`get_order_history\` với phone hoặc email trong tin nhắn. TUYỆT ĐỐI không hỏi tên/địa chỉ/sản phẩm. Kết quả lookup "Khách mới" không ngăn gọi tool — khách vẫn có thể có đơn hàng guest. VD: "lịch sử đơn hàng SĐT 0909..." → get_order_history(phone="0909...").
 - Khách tra cứu tình trạng đơn hàng theo mã đơn (ORD-...) → GỌI NGAY \`get_order_status\` với orderNumber đó.
 
 ═══════════════ FORMAT MESSAGE ═══════════════
