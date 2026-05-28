@@ -20,8 +20,9 @@ export const aiConfig = {
     /** Retry delays (ms) per attempt for a single model. Short so users don't wait long. */
     retryDelaysMs: [2000, 5000],
   },
-  /** Max tool calls per single user message (prevent infinite loop) */
-  maxToolCalls: 3,
+  /** Max tool calls per single user message (prevent infinite loop).
+   *  Comparison queries can need 2×search + 2×get_detail = 4 iterations. */
+  maxToolCalls: 5,
   /** Conversation history TTL in Redis (seconds) */
   historyTTL: 7200, // 2h
   /** Max messages kept in history */

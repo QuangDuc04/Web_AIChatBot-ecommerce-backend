@@ -226,6 +226,19 @@ export class ChatbotToolsService {
       result = await this.productRepo.scoredSearch(query, { limit: 5, minPrice: wideMin, maxPrice: wideMax });
     }
 
+    // If search still returns empty and the query contains a storage/RAM size token
+    // (e.g. "128GB", "256GB", "512GB", "16GB", "1TB"), retry without that constraint.
+    // The DB may store "iPhone 16" without a named variant, so "iPhone 16 128GB" → 0
+    // but "iPhone 16" → correct product. Strip tokens matching /\d+(GB|TB)/i.
+    if (result.total === 0) {
+      const STORAGE_RE = /\s*\d+\s*(GB|TB)\b/gi;
+      const queryWithoutStorage = query.replace(STORAGE_RE, '').replace(/\s+/g, ' ').trim();
+      if (queryWithoutStorage && queryWithoutStorage !== query) {
+        console.log(`[Chatbot] STORAGE_FALLBACK | original="${query}" | stripped="${queryWithoutStorage}"`);
+        result = await this.productRepo.scoredSearch(queryWithoutStorage, { limit: 5, minPrice, maxPrice });
+      }
+    }
+
     const resolvedClientUrl = clientUrl || process.env.CLIENT_URL || 'http://localhost:4000';
 
     // Project convention (NOT Shopify):

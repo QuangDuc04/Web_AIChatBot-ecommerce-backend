@@ -136,6 +136,21 @@ const FAQ_ENTRIES: FAQEntry[] = [
     questionType: ChatQuestionType.POLICY,
   },
 
+  // --- Human escalation ---
+  {
+    patterns: [
+      'nhân viên thật',
+      'nói chuyện với người',
+      'gặp nhân viên',
+      'nhân viên tư vấn',
+      'người thật',
+      'tư vấn trực tiếp',
+    ],
+    answer:
+      'Dạ mình hiểu rồi ạ! Anh/chị muốn được hỗ trợ trực tiếp từ nhân viên. Anh/chị vui lòng liên hệ:\n• Hotline/Zalo: 0353.643.396 (8h–20h hàng ngày).\n• Email: son.lequang97@gmail.com.\nNhân viên mình sẽ phản hồi sớm nhất có thể ạ!',
+    questionType: ChatQuestionType.GENERAL,
+  },
+
   // --- Authenticity / IMEI ---
   {
     patterns: [

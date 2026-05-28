@@ -615,6 +615,33 @@ export class AIChatbotService {
         }
       }
 
+      // ── Fallback: build reply from tool results when Gemini returned empty text ──
+      // Happens when tool loop hits maxToolCalls with pending calls, or Gemini returns
+      // no text after processing product/comparison tool results.
+      if (hasError && executedTools.length > 0) {
+        const lines: string[] = [];
+        for (const t of executedTools) {
+          const r = t.result as any;
+          if (t.name === 'get_product_detail' && r?.id && !r?.error) {
+            const price = Number(r.sellingPrice || 0).toLocaleString('vi-VN');
+            const orig = r.originalPrice ? ` (giá gốc ${Number(r.originalPrice).toLocaleString('vi-VN')}đ)` : '';
+            const stock = r.inStock ? 'còn hàng' : 'hết hàng';
+            lines.push(`• **${r.name}** — **${price}đ**${orig} — ${stock}`);
+            if (r.productUrl) lines.push(`  👉 ${r.productUrl}`);
+          } else if (t.name === 'search_products' && Array.isArray(r?.products) && r.products.length > 0) {
+            for (const p of r.products.slice(0, 3)) {
+              const price = Number(p.sellingPrice || 0).toLocaleString('vi-VN');
+              lines.push(`• **${p.name}** — **${price}đ**`);
+              if (p.productUrl) lines.push(`  👉 ${p.productUrl}`);
+            }
+          }
+        }
+        if (lines.length > 0) {
+          hasError = false;
+          replyText = 'Dạ mình tìm được thông tin sau ạ:\n\n' + lines.join('\n') + '\n\nAnh/chị cần thêm thông tin gì không ạ?';
+        }
+      }
+
       // Final safety: if replyText still contains a fake /confirm/ URL after retry,
       // sanitize to prevent broken link from reaching the user.
       if (
