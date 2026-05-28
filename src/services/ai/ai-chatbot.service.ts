@@ -11,6 +11,7 @@ import {
   isSelfContainedQuestion,
   isShortFollowUp,
   normalizeChatQuestion,
+  removeDiacritics,
 } from "../../utils/search-query.util";
 import { matchFAQ } from "./faq-matcher.service";
 import { requestDedup } from "../../utils/request-dedup.util";
@@ -381,29 +382,27 @@ export class AIChatbotService {
       // When the customer asks to change delivery address, cancel, or modify a placed order,
       // Gemini tends to ask for the order number as if it can handle it. Instead, detect these
       // patterns early and call escalate_to_human immediately before reaching Gemini.
-      const ORDER_MOD_RE = /(đổi|thay)\s*(địa\s*chỉ|đc)\s*(giao\s*hàng|đơn)?|hủy\s*đơn\s*(hàng)?|chỉnh\s*sửa\s*đơn|sửa\s*đơn\s*hàng/i;
+      // Use ASCII regex (via removeDiacritics) to avoid Unicode encoding issues in compiled JS.
+      const userMsgAscii = removeDiacritics(userMessage.toLowerCase());
+      const ORDER_MOD_RE = /doi\s*(dia\s*chi|dc)|thay\s*(dia\s*chi|dc)|huy\s*don|chinh\s*sua\s*don|sua\s*don\s*hang/i;
       const alreadyEscalated = history.some((m) => m.content.includes('[escalate_to_human]'));
-      if (ORDER_MOD_RE.test(userMessage) && !alreadyEscalated) {
+      if (ORDER_MOD_RE.test(userMsgAscii) && !alreadyEscalated) {
+        const reason = `Khach yeu cau: "${userMessage.trim().slice(0, 120)}"`;
+        let escResult: Record<string, unknown> = {};
         try {
-          const reason = `Khách yêu cầu: "${userMessage.trim().slice(0, 120)}"`;
-          const escResult = await this.toolsService.executeTool(
+          escResult = (await this.toolsService.executeTool(
             'escalate_to_human',
             { reason },
             sessionId,
             clientUrl,
-          );
-          const escR = escResult as Record<string, unknown>;
-          const reply = (escR?.message as string) ||
-            'Dạ việc đổi địa chỉ/hủy đơn hàng đã đặt cần được hỗ trợ bởi nhân viên ạ. Anh/chị vui lòng liên hệ hotline 0353.643.396 để được xử lý ngay nhé!';
-          console.log(`[Chatbot] AUTO_ESCALATE_ORDER_MOD | question="${userMessage}"`);
-          // Save to history
-          history.push({ role: 'user', content: historyUserContent });
-          history.push({ role: 'assistant', content: `[escalate_to_human] → ${JSON.stringify(escResult).slice(0, 200)}\n\n${reply}` });
-          await (await import('../../utils/cache.util')).CacheUtil.set(historyKey, history, aiConfig.historyTTL);
-          return { reply, escalated: true };
+          )) as Record<string, unknown>;
         } catch {
-          // escalation failed — continue to Gemini
+          // tool call failed — still return escalated reply
         }
+        const escReply = (escResult?.message as string) ||
+          'Dạ, việc đổi địa chỉ / hủy đơn hàng đã đặt cần được hỗ trợ bởi nhân viên ạ. Anh/chị vui lòng liên hệ hotline 0353.643.396 để được xử lý ngay nhé!';
+        console.log(`[Chatbot] AUTO_ESCALATE_ORDER_MOD | question="${userMessage}"`);
+        return { reply: escReply, escalated: true };
       }
 
       // ── Order state injection ──
