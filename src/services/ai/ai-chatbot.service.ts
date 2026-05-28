@@ -252,21 +252,10 @@ export class AIChatbotService {
     const historyKey = getHistoryKey(sessionId);
     const history = (await CacheUtil.get<ChatMessage[]>(historyKey)) || [];
 
-    // ── Layer 0: FAQ — static answers for policy/info questions ──
-    if (aiConfig.faqEnabled) {
-      const faqMatch = matchFAQ(userMessage, history);
-      if (faqMatch) {
-        history.push({ role: "user", content: userMessage });
-        history.push({ role: "assistant", content: faqMatch.answer });
-        await CacheUtil.set(historyKey, history, aiConfig.historyTTL);
-        console.log(`[Chatbot] FAQ_HIT | question="${userMessage}" | type=${faqMatch.questionType}`);
-        return { reply: faqMatch.answer };
-      }
-    }
-
     // ── Layer 0.5: Auto-escalate order modification requests ──
-    // Detect address-change / order-cancellation intent BEFORE dedup/Gemini.
-    // Use ASCII matching (removeDiacritics) so encoding never breaks the regex.
+    // MUST run BEFORE FAQ so "đổi địa chỉ giao hàng" doesn't get swallowed by
+    // the shipping FAQ pattern ("giao hàng"). Use ASCII matching so encoding
+    // never breaks the regex.
     {
       const msgAscii = removeDiacritics(userMessage.toLowerCase());
       const ORDER_MOD_RE = /doi\s*(dia\s*chi|dc)|thay\s*(dia\s*chi|dc)|huy\s*don|chinh\s*sua\s*don|sua\s*don\s*hang/i;
@@ -291,7 +280,19 @@ export class AIChatbotService {
       }
     }
 
-    // ── Layer 1: Dedup — coalesce concurrent identical questions ──
+    // ── Layer 1 (prev Layer 0): FAQ — static answers for policy/info questions ──
+    if (aiConfig.faqEnabled) {
+      const faqMatch = matchFAQ(userMessage, history);
+      if (faqMatch) {
+        history.push({ role: "user", content: userMessage });
+        history.push({ role: "assistant", content: faqMatch.answer });
+        await CacheUtil.set(historyKey, history, aiConfig.historyTTL);
+        console.log(`[Chatbot] FAQ_HIT | question="${userMessage}" | type=${faqMatch.questionType}`);
+        return { reply: faqMatch.answer };
+      }
+    }
+
+    // ── Layer 2: Dedup — coalesce concurrent identical questions ──
     const dedupKey = normalizeChatQuestion(userMessage);
     const isDedup = requestDedup.has(dedupKey);
 
