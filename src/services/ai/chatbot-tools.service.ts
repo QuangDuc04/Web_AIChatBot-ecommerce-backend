@@ -195,7 +195,14 @@ export class ChatbotToolsService {
   // ── Tool implementations ──────────────────────────────────────
 
   private async searchProducts(args: Record<string, unknown>, clientUrl?: string) {
-    const query = String(args.query || '');
+    // Normalize common Vietnamese phone abbreviations before search
+    // "ip 16" → "iPhone 16", "ss s25" → "Samsung s25", etc.
+    const rawQuery = String(args.query || '');
+    const query = rawQuery
+      .replace(/\bip\b/gi, 'iPhone')
+      .replace(/\bss\b/gi, 'Samsung')
+      .replace(/\bmb\b/gi, 'MacBook')
+      .replace(/\biPad\b/gi, 'iPad');
     const minPrice = args.minPrice !== undefined ? Number(args.minPrice) : undefined;
     const maxPrice = args.maxPrice !== undefined ? Number(args.maxPrice) : undefined;
     const cacheKey = `chatbot:search:${query.toLowerCase()}:${minPrice ?? ''}:${maxPrice ?? ''}`;

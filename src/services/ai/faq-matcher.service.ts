@@ -172,20 +172,25 @@ const FAQ_ENTRIES: FAQEntry[] = [
  * should go to Gemini — not be intercepted by FAQ.
  */
 const ORDERING_FLOW_PATTERNS = [
-  'cho mình xin',
-  'cho mình biết',
-  'anh/chị cho',
-  'cần mua bao nhiêu',
-  'số lượng',
-  'tên',
-  'số điện thoại',
-  'sđt',
+  // Asking for quantity — specific to order collection
+  'bao nhiêu chiếc',
+  'mua bao nhiêu',
+  // Asking for phone number
+  'xin số điện thoại',
+  'cho số điện thoại',
+  'xin sđt',
+  // Asking for shipping address
+  'địa chỉ giao hàng',
   'địa chỉ nhận hàng',
-  'địa chỉ giao',
-  'xác nhận đơn',
-  'tạo đơn',
-  'đặt hàng',
+  'xin địa chỉ',
+  // Asking for name (specific context)
+  'cho mình xin tên',
+  'xin tên đầy đủ',
+  // Order confirmation / creation
+  'xác nhận đơn hàng',
+  'tạo đơn hàng',
   'link xác nhận',
+  'link đặt hàng',
 ].map(removeDiacritics);
 
 function isInOrderingFlow(history: { role: string; content: string }[]): boolean {
