@@ -94,8 +94,12 @@ Khi khách hỏi chung chung và search_products trả nhiều kết quả:
   Sau khi có dữ liệu tool (dù từ lượt này hay lượt trước), CÂU TRẢ LỜI PHẢI: (a) liệt kê thông số chính (chip/RAM/camera/pin/giá) của TỪNG sản phẩm, (b) đưa ra nhận xét so sánh ngắn, (c) gợi ý chọn. KHÔNG chỉ hỏi "nhu cầu gì?" mà không có thông số nào.
   VD: "iPhone 16 hay Samsung S24 Ultra nên mua" → gọi get_product_detail cả 2 → trả lời: "iPhone 16: chip A18, giá X. Samsung S24 Ultra: chip Snapdragon 8 Gen 3, giá Y. Nếu dùng iOS → iPhone 16; nếu cần bút S Pen, màn lớn → S24 Ultra."
 - KHÔNG gọi get_product_detail nếu search_products đã đủ (hỏi giá, tồn kho, danh sách).
-- Khách hỏi lịch sử đơn hàng / đơn đã mua / xem đơn cũ → ĐÂY KHÔNG PHẢI luồng đặt hàng mới. GỌI NGAY \`get_order_history\` với phone hoặc email trong tin nhắn. TUYỆT ĐỐI không hỏi tên/địa chỉ/sản phẩm. Kết quả lookup "Khách mới" không ngăn gọi tool — khách vẫn có thể có đơn hàng guest. VD: "lịch sử đơn hàng SĐT 0909..." → get_order_history(phone="0909...").
+- Khách hỏi lịch sử đơn hàng / đơn đã mua / xem đơn cũ → ĐÂY KHÔNG PHẢI luồng đặt hàng mới. GỌI NGAY \`get_order_history\` với phone hoặc email trong tin nhắn. TUYỆT ĐỐI không hỏi tên/địa chỉ/sản phẩm. Kết quả lookup "Khách mới" không ngăn gọi tool — khách vẫn có thể có đơn hàng guest. VD: "lịch sử đơn hàng SĐT 0909..." → get_order_history(phone="0909..."). VD: "0909123456 — xem lịch sử đơn hàng giùm tôi" → dù auto-lookup đã chạy, PHẢI GỌI NGAY get_order_history(phone="0909123456") — đây là yêu cầu xem đơn, KHÔNG hỏi "tra cứu lịch sử hay mã giảm giá?".
 - Khách tra cứu tình trạng đơn hàng theo mã đơn (ORD-...) → GỌI NGAY \`get_order_status\` với orderNumber đó.
+- Khách yêu cầu gặp nhân viên, nói chuyện với người thật, nhân viên tư vấn, tư vấn trực tiếp, muốn hỗ trợ trực tiếp từ người → GỌI NGAY \`escalate_to_human\` với reason tóm tắt yêu cầu của khách. KHÔNG tự trả lời hotline mà không gọi tool.
+- Khách yêu cầu đổi/thay địa chỉ giao hàng, hủy đơn hàng đã đặt, chỉnh sửa thông tin đơn hàng đã tạo → GỌI NGAY \`escalate_to_human\`. BOT không thể sửa đơn hàng đã tạo — đây là việc của nhân viên. KHÔNG hỏi mã đơn hay xử lý tự mình.
+- \`search_products\` trả về 0 kết quả (products: []) → TUYỆT ĐỐI không nêu giá, không tạo URL, không dùng training data. Nói NGAY: "Dạ bên mình hiện chưa có [tên sản phẩm khách hỏi] trong hệ thống ạ. Anh/chị có muốn tham khảo sản phẩm tương tự không ạ?" — KHÔNG bịa thêm gì.
+- Khi so sánh 2 sản phẩm, nếu một số trường thông số (chip, pin, camera...) không có trong DB (null/undefined/trống): ghi ngắn gọn "*(chưa có thông số này trong hệ thống)*" đúng 1 lần ngay sau tên trường đó, KHÔNG lặp lại "Thông tin chi tiết không có sẵn" nhiều lần trong cùng 1 bảng so sánh.
 
 ═══════════════ FORMAT MESSAGE ═══════════════
 
@@ -225,20 +229,22 @@ export class AIChatbotService {
   ): Promise<{
     reply: string;
     escalated?: boolean;
+    rateLimited?: boolean;
   }> {
-    // Rate limiting
+    // Rate limiting — check current count before incrementing to avoid inflating counter
     const rateLimitKey = getRateLimitKey(sessionId);
+    const redis = (await import("../../config/redis")).default;
+    const currentRaw = await redis.get(rateLimitKey);
+    const current = currentRaw ? parseInt(currentRaw, 10) : 0;
+    if (current >= aiConfig.rateLimitPerMinute) {
+      return {
+        reply: "Bạn đang gửi quá nhiều tin nhắn. Vui lòng chờ một chút rồi thử lại nhé!",
+        rateLimited: true,
+      };
+    }
     const count = await CacheUtil.increment(rateLimitKey);
     if (count === 1) {
-      // Set expiry on first increment (60 seconds window)
-      const redis = (await import("../../config/redis")).default;
       await redis.expire(rateLimitKey, 60);
-    }
-    if (count > aiConfig.rateLimitPerMinute) {
-      return {
-        reply:
-          "Bạn đang gửi quá nhiều tin nhắn. Vui lòng chờ một chút rồi thử lại nhé! 😊",
-      };
     }
 
     // Load conversation history from Redis
@@ -614,6 +620,27 @@ export class AIChatbotService {
 
       // Strip any hallucinated tool_code blocks
       replyText = replyText.replace(/\[tool_code[\s\S]*?\]\n?/g, '').trim();
+
+      // ── Guard 3: search_products returned 0 results but reply still has fabricated price/URL ──
+      // When Gemini calls search_products and it returns no products, Gemini sometimes
+      // still fabricates a price or URL from training data (e.g. iPhone 17 Pro).
+      // Detect this and replace with a clear "not in stock" message.
+      {
+        const zeroResultSearch = executedTools.find(
+          (t) => t.name === 'search_products' && Array.isArray((t.result as any)?.products) && (t.result as any).products.length === 0,
+        );
+        if (
+          zeroResultSearch &&
+          !hasError &&
+          replyText &&
+          /\d{1,3}(?:\.\d{3})+đ/.test(replyText)
+        ) {
+          const queryArg = (zeroResultSearch.args as any)?.query || '';
+          const productLabel = queryArg ? `"${queryArg}"` : 'này';
+          console.warn(`[Chatbot] GUARD3_ZERO_RESULT_HALLUCINATION | question="${userMessage}" | query="${queryArg}"`);
+          replyText = `Dạ bên mình hiện chưa có sản phẩm ${productLabel} trong hệ thống ạ. Anh/chị có muốn tham khảo các sản phẩm tương tự khác không ạ?`;
+        }
+      }
 
       // If Gemini returned empty text but create_order_confirmation ran successfully,
       // use the replyDraft from the tool result instead of showing a generic error.

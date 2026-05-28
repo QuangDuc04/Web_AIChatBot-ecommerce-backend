@@ -24,6 +24,10 @@ export class ChatbotController {
       const clientOrigin = req.headers.origin as string | undefined;
       const result = await service.processMessage(sessionId, message.trim(), clientOrigin);
 
+      if (result.rateLimited) {
+        return ResponseUtil.error(res, result.reply, 429);
+      }
+
       ResponseUtil.success(res, {
         reply: result.reply,
         sessionId,
