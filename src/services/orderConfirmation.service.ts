@@ -83,7 +83,7 @@ export class OrderConfirmationService {
   /**
    * Confirm the order — creates a real Order via CheckoutService.
    */
-  async confirm(token: string): Promise<{ orderId: string; orderNumber: string }> {
+  async confirm(token: string, paymentMethod?: PaymentMethod): Promise<{ orderId: string; orderNumber: string }> {
     const confirmation = await this.getByToken(token);
 
     const orderRepo = AppDataSource.getRepository(Order);
@@ -124,7 +124,7 @@ export class OrderConfirmationService {
         guestEmail: confirmation.customerEmail || undefined,
         guestAddress: confirmation.shippingAddress,
         status: OrderStatus.PENDING,
-        paymentMethod: confirmation.paymentMethod,
+        paymentMethod: paymentMethod ?? confirmation.paymentMethod ?? PaymentMethod.COD,
         paymentStatus: 'pending' as any,
         subtotal,
         shippingFee,

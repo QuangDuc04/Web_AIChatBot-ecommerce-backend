@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { OrderConfirmationService } from '../services/orderConfirmation.service';
 import { ResponseUtil } from '../utils/response.util';
+import { PaymentMethod } from '../types/enums';
 
 const service = new OrderConfirmationService();
 
@@ -27,6 +28,11 @@ export class OrderConfirmationController {
         shippingFee: 0,
         total: subtotal,
         expiresAt: confirmation.expiresAt,
+        bankInfo: {
+          bankCode: process.env.BANK_CODE || 'MB',
+          accountNumber: process.env.BANK_ACCOUNT_NUMBER || '',
+          accountName: process.env.BANK_ACCOUNT_NAME || '',
+        },
       });
     } catch (e) {
       next(e);
@@ -36,7 +42,8 @@ export class OrderConfirmationController {
   /** POST /api/order-confirm/:token/confirm — Confirm & create order */
   async confirm(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await service.confirm(req.params.token);
+      const paymentMethod = req.body?.paymentMethod as PaymentMethod | undefined;
+      const result = await service.confirm(req.params.token, paymentMethod);
       ResponseUtil.created(res, result, 'Đặt hàng thành công!');
     } catch (e) {
       next(e);
